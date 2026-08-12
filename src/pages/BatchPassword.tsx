@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Select, Input, Checkbox, Button } from 'antd'
+import { Select, Input, Checkbox } from 'antd'
 import TopBar from '../components/TopBar'
 import SearchBar from '../components/SearchBar'
 import UploadZone from '../components/UploadZone'
