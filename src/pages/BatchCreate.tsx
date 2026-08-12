@@ -1,12 +1,14 @@
 import React, { useState } from 'react'
-import { Table, Button, Input, Select, message } from 'antd'
+import { Table, Button, Input, Select, Progress, message } from 'antd'
+import { LoadingOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
+import { listen } from '@tauri-apps/api/event'
 import TopBar from '../components/TopBar'
 import StepsBar from '../components/StepsBar'
 import UploadZone from '../components/UploadZone'
 import { downloadTemplate } from '../utils/template'
 import { tauriService } from '../services/tauri'
-import type { BatchResult, NewUserSpec, ParsedRecord } from '../types'
+import type { BatchResult, CreateProgressEvent, NewUserSpec, ParsedRecord } from '../types'
 
 const PWD_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%'
 const generatePassword = (length = 12) => {
@@ -18,12 +20,16 @@ const generatePassword = (length = 12) => {
 interface CreateRecord {
   key: string
   index: number
+  // 提交后在 specs 数组中的位置（用于按索引匹配进度事件，避免重名行互相覆盖）
+  specIdx?: number
   sAMAccountName: string
   displayName: string
   ou: string
   mail: string
   fields: Record<string, string>
   status: 'pass' | 'warn'
+  // 执行期间的实时状态（后端进度事件驱动）
+  live?: 'creating' | 'success' | 'failed'
   resultMsg?: string
 }
 
@@ -41,6 +47,8 @@ const BatchCreate: React.FC = () => {
   const [uniformPwd, setUniformPwd] = useState('')
   const [creating, setCreating] = useState(false)
   const [result, setResult] = useState<BatchResult | null>(null)
+  // 实时进度（预检查/创建阶段）
+  const [progress, setProgress] = useState<{ current: number; total: number; phase: string; message: string } | null>(null)
 
   const handleFileParsed = (parsedRecords: ParsedRecord[], name?: string) => {
     const mapped: CreateRecord[] = parsedRecords.map((r, i) => ({
@@ -73,6 +81,7 @@ const BatchCreate: React.FC = () => {
       message.error('文件指定密码模式下，每行都需要提供 password 列')
       return
     }
+    let unlisten: (() => void) | undefined
     try {
       const cfg = await tauriService.getConfig()
       if (!cfg.server || !cfg.domain) {
@@ -87,26 +96,51 @@ const BatchCreate: React.FC = () => {
         password: pwdMode === 'file' ? r.fields['password'] : pwdMode === 'uniform' ? uniformPwd : generatePassword(),
         attributes: r.fields,
       }))
+      // 记录每个提交行在 specs 中的位置，进度事件按索引精确匹配
+      const specIdxByName = new Map<string, number>()
+      targets.forEach((r, i) => { if (!specIdxByName.has(r.key)) specIdxByName.set(r.key, i) })
+      setRecords(prev => prev.map(r => ({ ...r, specIdx: specIdxByName.get(r.key) })))
 
       setCreating(true)
       setStep(2)
+      setResult(null)
+      setProgress({ current: 0, total: targets.length, phase: 'check', message: '连接域控…' })
+      // 清除上一轮的实时状态
+      setRecords(prev => prev.map(r => ({ ...r, live: undefined, resultMsg: undefined })))
+
+      // 监听后端推送的实时进度事件（预检查 → 逐个创建），按提交索引精确匹配行
+      unlisten = await listen<CreateProgressEvent>('batch-create-progress', ({ payload: p }) => {
+        setProgress({ current: p.current, total: p.total, phase: p.phase, message: p.message })
+        if (p.phase === 'create' && p.current > 0) {
+          setRecords(prev => prev.map(r => r.specIdx === p.current - 1
+            ? {
+                ...r,
+                live: p.status as 'creating' | 'success' | 'failed',
+                resultMsg: p.status === 'creating' ? '创建中…' : p.message,
+              }
+            : r))
+        }
+      })
+
       const res = await tauriService.batchCreateUsers(cfg, specs)
       setResult(res)
       setStep(3)
 
-      // 逐行回填结果
-      const byName = new Map(res.details.map(d => [d.username, d]))
+      // 终态兼容回填：未收到实时事件的行（如被跳过的）按提交索引补上结果
       setRecords(prev => prev.map(r => {
-        const d = byName.get(r.sAMAccountName)
-        return d ? { ...r, resultMsg: d.success ? '创建成功' : d.message } : r
+        const d = r.specIdx !== undefined ? res.details[r.specIdx] : undefined
+        return d && !r.resultMsg
+          ? { ...r, resultMsg: d.message, live: d.success ? 'success' : 'failed' }
+          : r
       }))
 
       if (res.failed === 0) message.success(`全部创建成功（${res.success}）`)
-      else message.warning(`成功 ${res.success}，失败 ${res.failed}`)
+      else message.warning(`成功 ${res.success}，失败/跳过 ${res.failed}`)
     } catch (err) {
       setStep(1)
       message.error(`创建失败: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
+      unlisten?.()
       setCreating(false)
     }
   }
@@ -130,11 +164,24 @@ const BatchCreate: React.FC = () => {
       render: (text: string) => <span style={{ color: text ? '#1a1a1a' : '#999' }}>{text || '—'}</span>,
     },
     {
-      title: '状态', dataIndex: 'status', key: 'status', width: 90,
+      title: '状态', dataIndex: 'status', key: 'status', width: 130,
       render: (status: 'pass' | 'warn', record: CreateRecord) => {
+        // 执行中：旋转图标 + 呼吸高亮由 onRow 动画驱动
+        if (record.live === 'creating') {
+          return (
+            <span style={{ color: '#1a1a1a', fontSize: 11, fontWeight: 500 }}>
+              <LoadingOutlined spin style={{ marginRight: 5 }} />创建中…
+            </span>
+          )
+        }
         if (record.resultMsg) {
-          const ok = record.resultMsg === '创建成功'
-          return <span style={{ color: ok ? '#16a34a' : '#dc2626', fontSize: 11, fontWeight: 500 }}>{record.resultMsg}</span>
+          const ok = record.live === 'success'
+          const skipped = record.resultMsg.includes('已跳过')
+          return (
+            <span style={{ color: ok ? '#16a34a' : skipped ? '#d97706' : '#dc2626', fontSize: 11, fontWeight: 500 }}>
+              {record.resultMsg.length > 24 ? record.resultMsg.slice(0, 24) + '…' : record.resultMsg}
+            </span>
+          )
         }
         const s = statusMap[status]
         return (
@@ -152,6 +199,13 @@ const BatchCreate: React.FC = () => {
 
   return (
     <>
+      {/* 当前创建行的呼吸高亮动画 */}
+      <style>{`
+        @keyframes rowPulse {
+          0%, 100% { background: #ffffff; }
+          50% { background: #f0f5ff; }
+        }
+      `}</style>
       <TopBar title="批量创建用户" />
       <div style={{ flex: 1, padding: 16, overflowY: 'auto' }}>
         <StepsBar steps={[
@@ -219,13 +273,32 @@ const BatchCreate: React.FC = () => {
               </div>
             </div>
 
+            {/* 实时进度：预检查 → 逐个创建，active 状态自带流动条纹动画 */}
+            {creating && progress && (
+              <div style={{ border: '1px solid #eee', borderRadius: 8, padding: 16, marginBottom: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#1a1a1a' }}>
+                    <LoadingOutlined spin style={{ marginRight: 6 }} />
+                    {progress.phase === 'check' ? '预检查（查重名/已存在用户）' : `正在创建 ${progress.current}/${progress.total}`}
+                  </span>
+                  <span style={{ fontSize: 11, color: '#666' }}>{progress.message}</span>
+                </div>
+                <Progress
+                  percent={progress.phase === 'check' ? 5 : Math.round((progress.current / progress.total) * 100)}
+                  status="active"
+                  strokeColor="#1a1a1a"
+                  size="small"
+                />
+              </div>
+            )}
+
             <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: 12, color: '#666' }}>
                 {fileName || '已解析文件'} — {records.length} 条记录 · <span style={{ color: '#16a34a' }}>通过 {passCount}</span> · <span style={{ color: '#d97706' }}>警告 {warnCount}</span>
                 {result && <> · <span style={{ color: '#16a34a' }}>成功 {result.success}</span> · <span style={{ color: '#dc2626' }}>失败 {result.failed}</span></>}
               </span>
               <div style={{ display: 'flex', gap: 8 }}>
-                <Button size="small" onClick={() => { setRecords([]); setFileName(''); setResult(null); setStep(0) }}>重新上传</Button>
+                <Button size="small" onClick={() => { setRecords([]); setFileName(''); setResult(null); setStep(0); setProgress(null) }}>重新上传</Button>
                 <Button size="small" type="primary" style={{ background: '#1a1a1a' }} onClick={handleConfirmCreate} loading={creating} disabled={step === 3}>
                   {result ? '已完成' : `确认创建(${passCount})`}
                 </Button>
@@ -238,6 +311,9 @@ const BatchCreate: React.FC = () => {
               size="small"
               pagination={records.length > 20 ? { pageSize: 20, size: 'small' } : false}
               style={{ fontSize: 12 }}
+              onRow={(r) => r.live === 'creating'
+                ? { style: { animation: 'rowPulse 1.2s ease-in-out infinite' } }
+                : {}}
             />
           </>
         )}

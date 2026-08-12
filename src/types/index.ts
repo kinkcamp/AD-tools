@@ -29,6 +29,16 @@ export interface BatchResult {
   details: BatchResultItem[]
 }
 
+// 批量创建实时进度事件（后端 batch-create-progress 事件负载）
+export interface CreateProgressEvent {
+  phase: 'check' | 'create'
+  username: string
+  status: 'checking' | 'creating' | 'success' | 'failed'
+  message: string
+  current: number
+  total: number
+}
+
 export interface NewUserSpec {
   sAMAccountName: string
   displayName: string

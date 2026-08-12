@@ -60,6 +60,19 @@ pub struct BatchResultItem {
     pub message: String,
 }
 
+/// 批量创建实时进度事件（通过 Tauri 事件推送到前端）
+/// phase: check=预检查 create=创建；status: checking/creating/success/failed
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateProgressEvent {
+    pub phase: String,
+    pub username: String,
+    pub status: String,
+    pub message: String,
+    pub current: usize,
+    pub total: usize,
+}
+
 impl BatchResult {
     fn from_details(details: Vec<BatchResultItem>) -> Self {
         let total = details.len();
@@ -387,29 +400,98 @@ impl LdapClient {
         }
     }
 
-    pub async fn batch_create_users(&self, users: Vec<NewUserSpec>) -> Result<BatchResult, String> {
+    pub async fn batch_create_users<F>(&self, users: Vec<NewUserSpec>, emit: F) -> Result<BatchResult, String>
+    where
+        F: Fn(CreateProgressEvent),
+    {
         let (mut ldap, _) = self.connect().await?;
-        let mut details = Vec::with_capacity(users.len());
-        for spec in &users {
-            let res = Self::create_user_impl(&mut ldap, &self.config, spec).await;
-            details.push(match res {
-                Ok(true) => BatchResultItem {
-                    username: spec.s_am_account_name.clone(),
-                    success: true,
-                    message: "创建成功".to_string(),
-                },
-                Ok(false) => BatchResultItem {
-                    username: spec.s_am_account_name.clone(),
-                    success: true,
-                    message: "用户已创建，但初始密码设置失败（域控未启用加密通道时 AD 拒绝改密），请勿重复创建，可用批量改密重试".to_string(),
-                },
-                Err(e) => BatchResultItem {
-                    username: spec.s_am_account_name.clone(),
-                    success: false,
-                    message: e,
-                },
+        let total = users.len();
+
+        // 阶段1 预检查：文件内重名 + 域内已存在（一次性批量查询，避免逐个往返）
+        emit(CreateProgressEvent {
+            phase: "check".to_string(), username: String::new(), status: "checking".to_string(),
+            message: format!("预检查：查询域内已有用户（0/{}）", total), current: 0, total,
+        });
+        // 域内已存在的用户名集合（小写比较，sAMAccountName 不区分大小写）
+        let mut existing: HashSet<String> = HashSet::new();
+        let mut queried = 0usize;
+        while queried < users.len() {
+            let chunk_end = (queried + 200).min(users.len());
+            let ors: Vec<String> = users[queried..chunk_end].iter()
+                .map(|u| format!("(sAMAccountName={})", ldap_escape(&u.s_am_account_name)))
+                .collect();
+            let filter = format!("(|{})", ors.join(""));
+            let mut stream = ldap.streaming_search_with(
+                EntriesOnly::new(), &self.config.base_dn(), Scope::Subtree, &filter, vec!["sAMAccountName"],
+            ).await.map_err(|e| format!("预检查查询失败: {}", e))?;
+            while let Some(entry) = stream.next().await.map_err(|e| format!("预检查查询失败: {}", e))? {
+                let se = SearchEntry::construct(entry);
+                if let Some(name) = se.attrs.get("sAMAccountName").and_then(|v| v.first()) {
+                    existing.insert(name.to_lowercase());
+                }
+            }
+            let _ = stream.finish().await;
+            queried = chunk_end;
+            emit(CreateProgressEvent {
+                phase: "check".to_string(), username: String::new(), status: "checking".to_string(),
+                message: format!("预检查：查询域内已有用户（{}/{}）", queried, total), current: 0, total,
             });
         }
+
+        // 文件内重名检测（保留首个，后续跳过）
+        let mut seen_in_file: HashMap<String, bool> = HashMap::new();
+        let mut details = Vec::with_capacity(total);
+
+        // 阶段2 逐个创建，每完成一个实时推送进度
+        for (i, spec) in users.iter().enumerate() {
+            let name_lc = spec.s_am_account_name.to_lowercase();
+            let item = if *seen_in_file.get(&name_lc).unwrap_or(&false) {
+                BatchResultItem {
+                    username: spec.s_am_account_name.clone(),
+                    success: false,
+                    message: "文件内用户名重复，已跳过".to_string(),
+                }
+            } else if existing.contains(&name_lc) {
+                BatchResultItem {
+                    username: spec.s_am_account_name.clone(),
+                    success: false,
+                    message: "用户已存在于域中，已跳过".to_string(),
+                }
+            } else {
+                seen_in_file.insert(name_lc.clone(), true);
+                emit(CreateProgressEvent {
+                    phase: "create".to_string(), username: spec.s_am_account_name.clone(),
+                    status: "creating".to_string(), message: "创建中".to_string(),
+                    current: i + 1, total,
+                });
+                match Self::create_user_impl(&mut ldap, &self.config, spec).await {
+                    Ok(true) => BatchResultItem {
+                        username: spec.s_am_account_name.clone(),
+                        success: true,
+                        message: "创建成功".to_string(),
+                    },
+                    Ok(false) => BatchResultItem {
+                        username: spec.s_am_account_name.clone(),
+                        success: true,
+                        message: "用户已创建，但初始密码设置失败（域控未启用加密通道时 AD 拒绝改密），请勿重复创建，可用批量改密重试".to_string(),
+                    },
+                    Err(e) => BatchResultItem {
+                        username: spec.s_am_account_name.clone(),
+                        success: false,
+                        message: e,
+                    },
+                }
+            };
+
+            let detail = item.clone();
+            details.push(item);
+            emit(CreateProgressEvent {
+                phase: "create".to_string(), username: detail.username.clone(),
+                status: if detail.success { "success".to_string() } else { "failed".to_string() },
+                message: detail.message.clone(), current: i + 1, total,
+            });
+        }
+
         ldap.unbind().await.ok();
         Ok(BatchResult::from_details(details))
     }

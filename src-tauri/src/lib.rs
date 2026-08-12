@@ -6,6 +6,7 @@ mod operation_log;
 use config::AppConfig;
 use ldap_client::LdapClient;
 use std::collections::HashMap;
+use tauri::Emitter;
 
 #[tauri::command]
 fn get_config() -> Result<AppConfig, String> {
@@ -71,11 +72,14 @@ async fn delete_user(cfg: AppConfig, user_dn: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn batch_create_users(cfg: AppConfig, users: Vec<ldap_client::NewUserSpec>) -> Result<ldap_client::BatchResult, String> {
+async fn batch_create_users(app: tauri::AppHandle, cfg: AppConfig, users: Vec<ldap_client::NewUserSpec>) -> Result<ldap_client::BatchResult, String> {
     let operator = cfg.username.clone();
     let total = users.len();
     let client = LdapClient::new(cfg);
-    let result = client.batch_create_users(users).await?;
+    // 每完成一步实时推送进度事件，前端逐行刷新状态
+    let result = client.batch_create_users(users, |evt| {
+        let _ = app.emit("batch-create-progress", &evt);
+    }).await?;
     operation_log::append_batch("批量创建用户", &operator, total, result.success);
     Ok(result)
 }
