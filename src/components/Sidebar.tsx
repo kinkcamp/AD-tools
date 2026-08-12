@@ -1,5 +1,6 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { tauriService } from '../services/tauri'
 
 const navConfig = [
   {
@@ -24,9 +25,40 @@ const navConfig = [
   },
 ]
 
+type ConnectionStatus = 'unknown' | 'connected' | 'disconnected' | 'no-config'
+
 const Sidebar: React.FC = () => {
   const navigate = useNavigate()
   const location = useLocation()
+  const [connStatus, setConnStatus] = useState<ConnectionStatus>('unknown')
+  const [sslEnabled, setSslEnabled] = useState(false)
+
+  useEffect(() => {
+    tauriService.getConfig().then(cfg => {
+      setSslEnabled(cfg.sslEnabled)
+      if (!cfg.ldapHost) {
+        setConnStatus('no-config')
+      } else {
+        // Try a quick connection test to get real status
+        tauriService.testConnection(cfg).then(() => {
+          setConnStatus('connected')
+        }).catch(() => {
+          setConnStatus('disconnected')
+        })
+      }
+    }).catch(() => {
+      setConnStatus('no-config')
+    })
+  }, [location.pathname])
+
+  const statusConfig = {
+    unknown: { color: '#999', bg: '#999', label: '检测中...' },
+    connected: { color: sslEnabled ? '#52c41a' : '#d97706', bg: sslEnabled ? '#52c41a' : '#d97706', label: sslEnabled ? 'SSL 已连接' : '已连接 (未加密)' },
+    disconnected: { color: '#e54d4d', bg: '#e54d4d', label: '连接失败' },
+    'no-config': { color: '#999', bg: '#999', label: '未配置连接' },
+  }
+
+  const status = statusConfig[connStatus]
 
   return (
     <div style={{
@@ -69,9 +101,9 @@ const Sidebar: React.FC = () => {
         ))}
       </div>
       <div style={{ padding: '12px 16px', borderTop: '1px solid #eee' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: '#52c41a', fontWeight: 500 }}>
-          <div style={{ width: 6, height: 6, background: '#52c41a', borderRadius: '50%' }} />
-          SSL 已连接
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: status.color, fontWeight: 500 }}>
+          <div style={{ width: 6, height: 6, background: status.bg, borderRadius: '50%' }} />
+          {status.label}
         </div>
       </div>
     </div>
