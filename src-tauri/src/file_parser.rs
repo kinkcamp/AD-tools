@@ -106,8 +106,9 @@ fn is_required_field(field: &str) -> bool {
 }
 
 pub fn generate_csv_template(path: &str) -> Result<(), String> {
+    // 与前端统一模板保持一致：全部批量功能通用，各功能只读所需列
     let headers = vec![
-        "sAMAccountName", "displayName", "mail", "department", "title",
+        "sAMAccountName", "displayName", "ou", "password", "mail", "department", "title",
         "telephoneNumber", "description", "userPrincipalName", "givenName", "sn",
     ];
 
@@ -117,7 +118,7 @@ pub fn generate_csv_template(path: &str) -> Result<(), String> {
     writer.write_record(&headers)
         .map_err(|e| format!("写入表头失败: {}", e))?;
 
-    writer.write_record(&["zhangsan", "张三", "zhangsan@company.com", "技术部", "工程师", "13800138000", "", "zhangsan@company.com", "三", "张"])
+    writer.write_record(&["zhangsan", "张三", "CN=Users,DC=company,DC=com", "Init@2026", "zhangsan@company.com", "技术部", "工程师", "13800138000", "", "zhangsan@company.com", "三", "张"])
         .map_err(|e| format!("写入示例失败: {}", e))?;
 
     writer.flush().map_err(|e| format!("刷新失败: {}", e))?;

@@ -4,33 +4,9 @@ import type { ColumnsType } from 'antd/es/table'
 import TopBar from '../components/TopBar'
 import StepsBar from '../components/StepsBar'
 import UploadZone from '../components/UploadZone'
+import { downloadTemplate } from '../utils/template'
 import { tauriService } from '../services/tauri'
 import type { BatchResult, NewUserSpec, ParsedRecord } from '../types'
-
-// 客户端生成模板并下载，避免依赖后端文件系统权限
-const downloadTemplate = (format: 'csv' | 'xlsx') => {
-  const headers = ['sAMAccountName', 'displayName', 'ou', 'mail', 'department', 'title', 'telephoneNumber', 'description', 'userPrincipalName', 'givenName', 'sn']
-  const example = ['zhangsan', '张三', 'OU=Users,DC=company,DC=com', 'zhangsan@company.com', '技术部', '工程师', '13800138000', '', 'zhangsan@company.com', '三', '张']
-
-  if (format === 'csv') {
-    const content = '\ufeff' + [headers.join(','), example.join(',')].join('\n')
-    const blob = new Blob([content], { type: 'text/csv;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'user_template.csv'
-    a.click()
-    URL.revokeObjectURL(url)
-  } else {
-    // Excel 模板通过 xlsx 库生成
-    import('xlsx').then((XLSX) => {
-      const ws = XLSX.utils.aoa_to_sheet([headers, example])
-      const wb = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(wb, ws, 'users')
-      XLSX.writeFile(wb, 'user_template.xlsx')
-    })
-  }
-}
 
 const PWD_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%'
 const generatePassword = (length = 12) => {
@@ -61,7 +37,7 @@ const BatchCreate: React.FC = () => {
   const [fileName, setFileName] = useState('')
   const [step, setStep] = useState(0)
   const [defaultOu, setDefaultOu] = useState('')
-  const [pwdMode, setPwdMode] = useState<'auto' | 'uniform'>('auto')
+  const [pwdMode, setPwdMode] = useState<'auto' | 'uniform' | 'file'>('auto')
   const [uniformPwd, setUniformPwd] = useState('')
   const [creating, setCreating] = useState(false)
   const [result, setResult] = useState<BatchResult | null>(null)
@@ -93,6 +69,10 @@ const BatchCreate: React.FC = () => {
       message.error('统一初始密码长度不能少于 8 位')
       return
     }
+    if (pwdMode === 'file' && targets.some(r => !r.fields['password'])) {
+      message.error('文件指定密码模式下，每行都需要提供 password 列')
+      return
+    }
     try {
       const cfg = await tauriService.getConfig()
       if (!cfg.server || !cfg.domain) {
@@ -104,7 +84,7 @@ const BatchCreate: React.FC = () => {
         sAMAccountName: r.sAMAccountName,
         displayName: r.displayName,
         ou: r.ou || defaultOu.trim(),
-        password: pwdMode === 'uniform' ? uniformPwd : generatePassword(),
+        password: pwdMode === 'file' ? r.fields['password'] : pwdMode === 'uniform' ? uniformPwd : generatePassword(),
         attributes: r.fields,
       }))
 
@@ -183,8 +163,8 @@ const BatchCreate: React.FC = () => {
 
         <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
           {[
-            { title: 'CSV模板', desc: '逗号分隔格式', format: 'csv' as const },
-            { title: 'Excel模板', desc: 'xlsx格式', format: 'xlsx' as const },
+            { title: 'CSV模板', desc: '逗号分隔格式（全部批量功能通用）', format: 'csv' as const },
+            { title: 'Excel模板', desc: 'xlsx格式（全部批量功能通用）', format: 'xlsx' as const },
           ].map((tpl) => (
             <div
               key={tpl.title}
@@ -221,9 +201,10 @@ const BatchCreate: React.FC = () => {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 11, color: '#666', whiteSpace: 'nowrap' }}>初始密码</span>
-                  <Select value={pwdMode} onChange={setPwdMode} style={{ width: 110 }} size="small" options={[
+                  <Select value={pwdMode} onChange={setPwdMode} style={{ width: 130 }} size="small" options={[
                     { value: 'auto', label: '自动生成' },
                     { value: 'uniform', label: '统一密码' },
+                    { value: 'file', label: '文件指定' },
                   ]} />
                   {pwdMode === 'uniform' && (
                     <Input.Password
