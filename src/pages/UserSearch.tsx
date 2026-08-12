@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Table, Button, message, Popconfirm, Modal } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import TopBar from '../components/TopBar'
@@ -73,6 +73,26 @@ const UserSearch: React.FC = () => {
   const [selectedKeys, setSelectedKeys] = useState<React.Key[]>([])
   const [batchDeleting, setBatchDeleting] = useState(false)
   const [passwordModal, setPasswordModal] = useState<{ open: boolean; user: ADUser | null }>({ open: false, user: null })
+
+  // 进入页面自动加载 Users 容器下的用户（系统内置账户已由后端排除）
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      try {
+        const config = await tauriService.getConfig()
+        if (!config.server || !config.domain) return
+        setLoading(true)
+        const result = await tauriService.listUsers(config)
+        if (!cancelled) setUsers(result)
+      } catch {
+        // 连接失败时静默处理，由侧边栏状态与手动搜索提示覆盖
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
 
   const handleSearch = async (keyword: string, ouFilter: string) => {
     if (!keyword.trim()) {
@@ -223,7 +243,7 @@ const UserSearch: React.FC = () => {
           onChange: (keys) => setSelectedKeys(keys),
         }}
         onRow={(record) => ({ onDoubleClick: () => setPasswordModal({ open: true, user: record }) })}
-        locale={{ emptyText: '输入关键词搜索用户' }}
+        locale={{ emptyText: loading ? '加载中...' : '暂无用户，可输入关键词搜索' }}
         pagination={users.length > 0 ? {
           pageSize: 10,
           showTotal: (total, range) => `显示 ${range[0]}-${range[1]} / 共 ${total} 条`,

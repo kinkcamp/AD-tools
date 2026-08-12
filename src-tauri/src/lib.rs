@@ -33,6 +33,12 @@ async fn search_users(cfg: AppConfig, keyword: String, ou_filter: String) -> Res
 }
 
 #[tauri::command]
+async fn list_users(cfg: AppConfig) -> Result<Vec<ldap_client::ADUser>, String> {
+    let client = LdapClient::new(cfg);
+    client.list_users().await
+}
+
+#[tauri::command]
 async fn change_password(cfg: AppConfig, user_dn: String, new_password: String, force_change: bool) -> Result<(), String> {
     let operator = cfg.username.clone();
     let client = LdapClient::new(cfg);
@@ -149,6 +155,7 @@ pub fn run() {
             save_config_cmd,
             test_connection,
             search_users,
+            list_users,
             change_password,
             delete_user,
             batch_create_users,

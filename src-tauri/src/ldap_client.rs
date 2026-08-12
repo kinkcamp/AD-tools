@@ -156,18 +156,43 @@ impl LdapClient {
         else { "active" }
     }
 
+    fn entry_to_ad_user(se: SearchEntry) -> ADUser {
+        let status = se.attrs.get("userAccountControl")
+            .and_then(|v| v.first())
+            .and_then(|v| v.parse::<u32>().ok())
+            .map(Self::uac_status)
+            .unwrap_or("active");
+
+        ADUser {
+            dn: se.dn,
+            s_am_account_name: se.attrs.get("sAMAccountName").and_then(|v| v.first()).cloned().unwrap_or_default(),
+            display_name: se.attrs.get("displayName").and_then(|v| v.first()).cloned().unwrap_or_default(),
+            mail: se.attrs.get("mail").and_then(|v| v.first()).cloned().unwrap_or_default(),
+            department: se.attrs.get("department").and_then(|v| v.first()).cloned().unwrap_or_default(),
+            status: status.to_string(),
+            last_login: String::new(),
+        }
+    }
+
+    /// 是否为系统内置账户：机器账户($结尾)、krbtgt、Guest
+    fn is_system_account(name: &str) -> bool {
+        let lower = name.to_lowercase();
+        lower.ends_with('$') || lower == "krbtgt" || lower == "guest"
+    }
+
+    const USER_ATTRS: [&'static str; 5] = ["sAMAccountName", "displayName", "mail", "department", "userAccountControl"];
+
     pub async fn search_users(&self, keyword: &str, _ou_filter: &str) -> Result<Vec<ADUser>, String> {
         let (mut ldap, _) = self.connect().await?;
         let base_dn = self.config.base_dn();
 
         let kw = ldap_escape(keyword);
         let filter = format!("(&(objectClass=user)(objectCategory=person)(|(sAMAccountName=*{}*)(displayName=*{}*)(mail=*{}*)))", kw, kw, kw);
-        let attrs = vec!["sAMAccountName", "displayName", "mail", "department", "userAccountControl"];
 
         // 流式拉取并限制最大条数，避免大域全量进内存；
         // 必须用 EntriesOnly 适配器：AD 会返回搜索引用(referral)消息，
         // 不过滤会被当成条目解析导致 panic
-        let mut stream = ldap.streaming_search_with(EntriesOnly::new(), &base_dn, Scope::Subtree, &filter, attrs)
+        let mut stream = ldap.streaming_search_with(EntriesOnly::new(), &base_dn, Scope::Subtree, &filter, Self::USER_ATTRS.to_vec())
             .await
             .map_err(|e| format!("搜索失败: {}", e))?;
 
@@ -176,22 +201,33 @@ impl LdapClient {
             if users.len() >= SEARCH_SIZE_LIMIT {
                 break;
             }
-            let se = SearchEntry::construct(entry);
-            let status = se.attrs.get("userAccountControl")
-                .and_then(|v| v.first())
-                .and_then(|v| v.parse::<u32>().ok())
-                .map(Self::uac_status)
-                .unwrap_or("active");
+            users.push(Self::entry_to_ad_user(SearchEntry::construct(entry)));
+        }
+        let _ = stream.finish().await;
 
-            users.push(ADUser {
-                dn: se.dn,
-                s_am_account_name: se.attrs.get("sAMAccountName").and_then(|v| v.first()).cloned().unwrap_or_default(),
-                display_name: se.attrs.get("displayName").and_then(|v| v.first()).cloned().unwrap_or_default(),
-                mail: se.attrs.get("mail").and_then(|v| v.first()).cloned().unwrap_or_default(),
-                department: se.attrs.get("department").and_then(|v| v.first()).cloned().unwrap_or_default(),
-                status: status.to_string(),
-                last_login: String::new(),
-            });
+        ldap.unbind().await.ok();
+        Ok(users)
+    }
+
+    /// 列出 Users 容器下的用户（排除系统内置账户），用于搜索页默认展示
+    pub async fn list_users(&self) -> Result<Vec<ADUser>, String> {
+        let (mut ldap, _) = self.connect().await?;
+        let base = format!("CN=Users,{}", self.config.base_dn());
+        let filter = "(&(objectClass=user)(objectCategory=person))";
+
+        let mut stream = ldap.streaming_search_with(EntriesOnly::new(), &base, Scope::Subtree, filter, Self::USER_ATTRS.to_vec())
+            .await
+            .map_err(|e| format!("查询用户列表失败: {}", e))?;
+
+        let mut users: Vec<ADUser> = Vec::new();
+        while let Some(entry) = stream.next().await.map_err(|e| format!("查询用户列表失败: {}", e))? {
+            if users.len() >= SEARCH_SIZE_LIMIT {
+                break;
+            }
+            let user = Self::entry_to_ad_user(SearchEntry::construct(entry));
+            if !Self::is_system_account(&user.s_am_account_name) {
+                users.push(user);
+            }
         }
         let _ = stream.finish().await;
 
