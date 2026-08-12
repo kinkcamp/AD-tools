@@ -6,7 +6,7 @@ import type { ParsedRecord } from '../types'
 
 interface UploadZoneProps {
   onFileSelect?: (file: File) => void
-  onFileParsed?: (records: ParsedRecord[]) => void
+  onFileParsed?: (records: ParsedRecord[], fileName?: string) => void
   accept?: string
 }
 
@@ -69,7 +69,7 @@ const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onFileParsed, acc
       } else {
         message.success(`已解析 ${records.length} 条记录`)
       }
-      onFileParsed(records)
+      onFileParsed(records, file.name)
     } catch (err) {
       message.error(`文件解析失败: ${err}`)
       setFileName('')

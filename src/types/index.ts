@@ -15,11 +15,40 @@ export interface AppConfig {
   password: string
 }
 
+export interface BatchResultItem {
+  username: string
+  success: boolean
+  message: string
+}
+
 export interface BatchResult {
   total: number
   success: number
   failed: number
-  details: { username: string; success: boolean; message: string }[]
+  details: BatchResultItem[]
+}
+
+export interface NewUserSpec {
+  sAMAccountName: string
+  displayName: string
+  ou: string
+  password: string
+  attributes: Record<string, string>
+}
+
+export interface BatchPasswordItem {
+  sAMAccountName: string
+  password: string
+  forceChange: boolean
+}
+
+export interface LogEntry {
+  time: string
+  operation: string
+  target: string
+  operator: string
+  status: 'success' | 'failed' | 'partial'
+  detail: string
 }
 
 export interface ParsedRecord {

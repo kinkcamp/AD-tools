@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Table, Button, message, Popconfirm } from 'antd'
+import { Table, Button, message, Popconfirm, Modal } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import TopBar from '../components/TopBar'
 import SearchBar from '../components/SearchBar'
@@ -61,19 +61,37 @@ const columns: ColumnsType<ADUser> = [
   },
 ]
 
+const csvCell = (v: string) => {
+  // CSV 转义：包含逗号/引号/换行时加引号包裹
+  if (/[",\n]/.test(v)) return `"${v.replace(/"/g, '""')}"`
+  return v
+}
+
 const UserSearch: React.FC = () => {
   const [users, setUsers] = useState<ADUser[]>([])
   const [loading, setLoading] = useState(false)
+  const [selectedKeys, setSelectedKeys] = useState<React.Key[]>([])
+  const [batchDeleting, setBatchDeleting] = useState(false)
   const [passwordModal, setPasswordModal] = useState<{ open: boolean; user: ADUser | null }>({ open: false, user: null })
 
   const handleSearch = async (keyword: string, ouFilter: string) => {
+    if (!keyword.trim()) {
+      message.warning('请输入搜索关键词')
+      return
+    }
     setLoading(true)
     try {
       const config = await tauriService.getConfig()
+      if (!config.server || !config.domain) {
+        message.error('请先在连接设置中配置 AD 服务器')
+        return
+      }
       const result = await tauriService.searchUsers(config, keyword, ouFilter)
       setUsers(result)
+      setSelectedKeys([])
+      if (result.length === 0) message.info('未找到匹配的用户')
     } catch (err) {
-      message.error(`搜索失败: ${err}`)
+      message.error(`搜索失败: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setLoading(false)
     }
@@ -85,7 +103,7 @@ const UserSearch: React.FC = () => {
       await tauriService.changePassword(config, userDn, newPassword, forceChange)
       message.success('密码修改成功')
     } catch (err) {
-      message.error(`修改失败: ${err}`)
+      message.error(`修改失败: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 
@@ -96,8 +114,69 @@ const UserSearch: React.FC = () => {
       message.success('用户已删除')
       setUsers(prev => prev.filter(u => u.dn !== userDn))
     } catch (err) {
-      message.error(`删除失败: ${err}`)
+      message.error(`删除失败: ${err instanceof Error ? err.message : String(err)}`)
     }
+  }
+
+  // 导出当前搜索结果为 CSV
+  const handleExport = () => {
+    if (users.length === 0) {
+      message.warning('没有可导出的数据')
+      return
+    }
+    const headers = ['sAMAccountName', 'displayName', 'mail', 'department', 'status', 'dn']
+    const lines = users.map(u => [
+      u.sAMAccountName, u.displayName, u.mail, u.department,
+      statusMap[u.status]?.label || u.status, u.dn,
+    ].map(csvCell).join(','))
+    const blob = new Blob(['\ufeff' + [headers.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `users_${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+    message.success(`已导出 ${users.length} 条记录`)
+  }
+
+  // 批量删除选中用户（二次确认 + 逐个执行）
+  const handleBatchDelete = () => {
+    const targets = users.filter(u => selectedKeys.includes(u.dn))
+    if (targets.length === 0) {
+      message.warning('请先勾选要删除的用户')
+      return
+    }
+    Modal.confirm({
+      title: `确认删除 ${targets.length} 个用户？`,
+      content: `将从 AD 中永久删除: ${targets.slice(0, 5).map(u => u.sAMAccountName).join(', ')}${targets.length > 5 ? ` 等 ${targets.length} 个用户` : ''}。此操作不可恢复。`,
+      okText: '确认删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          const config = await tauriService.getConfig()
+          setBatchDeleting(true)
+          let success = 0
+          const failedNames: string[] = []
+          for (const u of targets) {
+            try {
+              await tauriService.deleteUser(config, u.dn)
+              success++
+            } catch {
+              failedNames.push(u.sAMAccountName)
+            }
+          }
+          setUsers(prev => prev.filter(u => !selectedKeys.includes(u.dn) || failedNames.includes(u.sAMAccountName)))
+          setSelectedKeys(failedNames.length > 0 ? users.filter(u => failedNames.includes(u.sAMAccountName)).map(u => u.dn) : [])
+          if (failedNames.length === 0) message.success(`已删除 ${success} 个用户`)
+          else message.warning(`成功 ${success}，失败 ${failedNames.length}: ${failedNames.join(', ')}`)
+        } catch (err) {
+          message.error(`批量删除失败: ${err instanceof Error ? err.message : String(err)}`)
+        } finally {
+          setBatchDeleting(false)
+        }
+      },
+    })
   }
 
   const activeCount = users.filter(u => u.status === 'active').length
@@ -110,8 +189,10 @@ const UserSearch: React.FC = () => {
       title="搜索用户"
       actions={
         <>
-          <Button size="small">导出</Button>
-          <Button size="small" danger>批量删除</Button>
+          <Button size="small" onClick={handleExport} disabled={users.length === 0}>导出</Button>
+          <Button size="small" danger onClick={handleBatchDelete} loading={batchDeleting} disabled={selectedKeys.length === 0}>
+            批量删除{selectedKeys.length > 0 ? `(${selectedKeys.length})` : ''}
+          </Button>
         </>
       }
     />
@@ -124,6 +205,7 @@ const UserSearch: React.FC = () => {
         { label: '已锁定', value: lockedCount },
       ]} />
       <Table
+        rowKey="dn"
         columns={[...columns, {
           title: '操作', key: 'action', width: 80,
           render: (_: unknown, record: ADUser) => (
@@ -135,7 +217,11 @@ const UserSearch: React.FC = () => {
         dataSource={users}
         loading={loading}
         size="small"
-        rowSelection={{ type: 'checkbox' }}
+        rowSelection={{
+          type: 'checkbox',
+          selectedRowKeys: selectedKeys,
+          onChange: (keys) => setSelectedKeys(keys),
+        }}
         onRow={(record) => ({ onDoubleClick: () => setPasswordModal({ open: true, user: record }) })}
         locale={{ emptyText: '输入关键词搜索用户' }}
         pagination={users.length > 0 ? {
@@ -163,3 +249,4 @@ const UserSearch: React.FC = () => {
 }
 
 export default UserSearch
+

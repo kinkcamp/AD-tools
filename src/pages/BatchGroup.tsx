@@ -3,47 +3,90 @@ import { Table, Button, Input, Tag, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import TopBar from '../components/TopBar'
 import UploadZone from '../components/UploadZone'
-import type { ParsedRecord } from '../types'
+import { tauriService } from '../services/tauri'
+import type { BatchResult, ParsedRecord } from '../types'
 
 interface GroupRecord {
   key: string
   index: number
   sAMAccountName: string
   displayName: string
-  currentGroups: string
-  action: 'exists' | 'will_join'
+  resultMsg?: string
 }
 
 const BatchGroup: React.FC = () => {
   const [selectedGroups, setSelectedGroups] = useState<string[]>([])
   const [inputValue, setInputValue] = useState('')
   const [records, setRecords] = useState<GroupRecord[]>([])
+  const [fileName, setFileName] = useState('')
+  const [running, setRunning] = useState(false)
+  const [result, setResult] = useState<BatchResult | null>(null)
 
   const removeGroup = (group: string) => {
     setSelectedGroups(selectedGroups.filter((g) => g !== group))
   }
 
   const addGroup = () => {
-    if (inputValue && !selectedGroups.includes(inputValue)) {
-      setSelectedGroups([...selectedGroups, inputValue])
+    const g = inputValue.trim()
+    if (g && !selectedGroups.includes(g)) {
+      setSelectedGroups([...selectedGroups, g])
       setInputValue('')
     }
   }
 
-  const handleFileParsed = (parsedRecords: ParsedRecord[]) => {
+  const handleFileParsed = (parsedRecords: ParsedRecord[], name?: string) => {
     const mapped: GroupRecord[] = parsedRecords.map((r, i) => ({
       key: String(i),
       index: i + 1,
       sAMAccountName: r.fields['sAMAccountName'] || '',
       displayName: r.fields['displayName'] || '',
-      currentGroups: r.fields['memberOf'] || '—',
-      action: 'will_join' as const,
-    }))
+    })).filter(r => r.sAMAccountName)
+    if (mapped.length === 0) {
+      message.error('文件中没有找到 sAMAccountName 列或无有效数据')
+      return
+    }
     setRecords(mapped)
+    setResult(null)
+    if (name) setFileName(name)
   }
 
-  const handleConfirm = () => {
-    message.info('加入组功能将在连接 AD 后可用')
+  const handleConfirm = async () => {
+    if (selectedGroups.length === 0) {
+      message.error('请先添加至少一个目标组')
+      return
+    }
+    if (records.length === 0) {
+      message.error('请先上传包含用户名的文件')
+      return
+    }
+    try {
+      const cfg = await tauriService.getConfig()
+      if (!cfg.server || !cfg.domain) {
+        message.error('请先在连接设置中配置 AD 服务器')
+        return
+      }
+
+      setRunning(true)
+      const res = await tauriService.batchAddToGroup(
+        cfg,
+        records.map(r => r.sAMAccountName),
+        selectedGroups,
+      )
+      setResult(res)
+
+      const byName = new Map(res.details.map(d => [d.username, d]))
+      setRecords(prev => prev.map(r => {
+        const d = byName.get(r.sAMAccountName)
+        return d ? { ...r, resultMsg: d.success ? '已加入组' : d.message } : r
+      }))
+
+      if (res.failed === 0) message.success(`全部加入成功（${res.success}）`)
+      else message.warning(`成功 ${res.success}，失败 ${res.failed}`)
+    } catch (err) {
+      message.error(`加入组失败: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setRunning(false)
+    }
   }
 
   const columns: ColumnsType<GroupRecord> = [
@@ -54,15 +97,11 @@ const BatchGroup: React.FC = () => {
     },
     { title: '姓名', dataIndex: 'displayName', key: 'displayName' },
     {
-      title: '当前所属组', dataIndex: 'currentGroups', key: 'currentGroups',
-      render: (text: string) => <span style={{ color: '#999', fontSize: 11 }}>{text}</span>,
-    },
-    {
-      title: '操作', dataIndex: 'action', key: 'action',
-      render: (action: 'exists' | 'will_join') => {
-        const color = action === 'exists' ? '#d97706' : '#16a34a'
-        const label = action === 'exists' ? '已在组' : '将加入'
-        return <span style={{ color, fontSize: 11, fontWeight: 500 }}>{label}</span>
+      title: '操作', dataIndex: 'resultMsg', key: 'resultMsg', width: 140,
+      render: (text?: string) => {
+        if (!text) return <span style={{ color: '#16a34a', fontSize: 11, fontWeight: 500 }}>将加入</span>
+        const ok = text === '已加入组'
+        return <span style={{ color: ok ? '#16a34a' : '#dc2626', fontSize: 11, fontWeight: 500 }}>{text}</span>
       },
     },
   ]
@@ -79,10 +118,11 @@ const BatchGroup: React.FC = () => {
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onPressEnter={addGroup}
-              placeholder="输入组名后回车"
-              style={{ width: 180 }}
+              placeholder="输入组名后回车（支持多个组）"
+              style={{ width: 220 }}
               size="small"
             />
+            <Button size="small" onClick={addGroup} disabled={!inputValue.trim()}>添加</Button>
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {selectedGroups.map((group) => (
@@ -95,6 +135,7 @@ const BatchGroup: React.FC = () => {
                 {group}
               </Tag>
             ))}
+            {selectedGroups.length === 0 && <span style={{ fontSize: 11, color: '#bbb' }}>尚未添加目标组</span>}
           </div>
         </div>
 
@@ -103,15 +144,23 @@ const BatchGroup: React.FC = () => {
         {records.length > 0 && (
           <>
             <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 12, color: '#666' }}>已解析 {records.length} 个用户</span>
-              <Button size="small" type="primary" style={{ background: '#16a34a', borderColor: '#16a34a' }} onClick={handleConfirm}>确认执行</Button>
+              <span style={{ fontSize: 12, color: '#666' }}>
+                {fileName || '已解析文件'} — {records.length} 个用户
+                {result && <> · <span style={{ color: '#16a34a' }}>成功 {result.success}</span> · <span style={{ color: '#dc2626' }}>失败 {result.failed}</span></>}
+              </span>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Button size="small" onClick={() => { setRecords([]); setFileName(''); setResult(null) }}>重新上传</Button>
+                <Button size="small" type="primary" style={{ background: '#16a34a', borderColor: '#16a34a' }} onClick={handleConfirm} loading={running} disabled={!!result}>
+                  {result ? '已完成' : '确认执行'}
+                </Button>
+              </div>
             </div>
 
             <Table
               columns={columns}
               dataSource={records}
               size="small"
-              pagination={false}
+              pagination={records.length > 20 ? { pageSize: 20, size: 'small' } : false}
               style={{ fontSize: 12 }}
             />
           </>
