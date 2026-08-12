@@ -33,19 +33,22 @@ const Sidebar: React.FC = () => {
   const [connStatus, setConnStatus] = useState<ConnectionStatus>('unknown')
 
   useEffect(() => {
+    let cancelled = false
     tauriService.getConfig().then(cfg => {
+      if (cancelled) return
       if (!cfg.server || !cfg.domain) {
         setConnStatus('no-config')
       } else {
         tauriService.testConnection(cfg).then(() => {
-          setConnStatus('connected')
+          if (!cancelled) setConnStatus('connected')
         }).catch(() => {
-          setConnStatus('disconnected')
+          if (!cancelled) setConnStatus('disconnected')
         })
       }
     }).catch(() => {
-      setConnStatus('no-config')
+      if (!cancelled) setConnStatus('no-config')
     })
+    return () => { cancelled = true }
   }, [location.pathname])
 
   const statusConfig: Record<ConnectionStatus, { color: string; label: string }> = {

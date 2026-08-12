@@ -1,5 +1,5 @@
 import React from 'react'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { HashRouter, Routes, Route } from 'react-router-dom'
 import AppLayout from './components/AppLayout'
 import UserSearch from './pages/UserSearch'
 import BatchCreate from './pages/BatchCreate'
@@ -10,7 +10,7 @@ import Settings from './pages/Settings'
 import Logs from './pages/Logs'
 
 const App: React.FC = () => (
-  <BrowserRouter>
+  <HashRouter>
     <Routes>
       <Route element={<AppLayout />}>
         <Route path="/" element={<UserSearch />} />
@@ -22,7 +22,7 @@ const App: React.FC = () => (
         <Route path="/logs" element={<Logs />} />
       </Route>
     </Routes>
-  </BrowserRouter>
+  </HashRouter>
 )
 
 export default App

@@ -1,9 +1,29 @@
 use ldap3::{LdapConnAsync, LdapConnSettings, Scope, SearchEntry};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::time::Duration;
 use crate::config::AppConfig;
 
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Escape a value for safe interpolation into an LDAP search filter (RFC 4515)
+fn ldap_escape(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for c in input.chars() {
+        match c {
+            '\\' => out.push_str("\\5c"),
+            '*' => out.push_str("\\2a"),
+            '(' => out.push_str("\\28"),
+            ')' => out.push_str("\\29"),
+            '\0' => out.push_str("\\00"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ADUser {
     pub dn: String,
     pub s_am_account_name: String,
@@ -41,8 +61,10 @@ impl LdapClient {
     async fn connect(&self) -> Result<ldap3::Ldap, String> {
         let url = self.config.ldap_url();
 
+        // 生产环境必须验证服务器证书，防止中间人攻击
         let settings = LdapConnSettings::new()
-            .set_no_tls_verify(true);
+            .set_no_tls_verify(false)
+            .set_conn_timeout(CONNECT_TIMEOUT);
 
         let (conn, mut ldap) = LdapConnAsync::with_settings(settings, &url)
             .await
@@ -70,7 +92,8 @@ impl LdapClient {
         let mut ldap = self.connect().await?;
         let base_dn = self.config.base_dn();
 
-        let filter = format!("(&(objectClass=user)(|(sAMAccountName=*{}*)(displayName=*{}*)(mail=*{}*)))", keyword, keyword, keyword);
+        let kw = ldap_escape(keyword);
+        let filter = format!("(&(objectClass=user)(|(sAMAccountName=*{}*)(displayName=*{}*)(mail=*{}*)))", kw, kw, kw);
         let attrs = vec!["sAMAccountName", "displayName", "mail", "department", "userAccountControl", "lastLogon"];
 
         let (rs, _rc) = ldap.search(&base_dn, Scope::Subtree, &filter, attrs)

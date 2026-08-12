@@ -4,8 +4,32 @@ import type { ColumnsType } from 'antd/es/table'
 import TopBar from '../components/TopBar'
 import StepsBar from '../components/StepsBar'
 import UploadZone from '../components/UploadZone'
-import { tauriService } from '../services/tauri'
 import type { ParsedRecord } from '../types'
+
+// 客户端生成模板并下载，避免依赖后端文件系统权限
+const downloadTemplate = (format: 'csv' | 'xlsx') => {
+  const headers = ['sAMAccountName', 'displayName', 'mail', 'department', 'title', 'telephoneNumber', 'description', 'userPrincipalName', 'givenName', 'sn']
+  const example = ['zhangsan', '张三', 'zhangsan@company.com', '技术部', '工程师', '13800138000', '', 'zhangsan@company.com', '三', '张']
+
+  if (format === 'csv') {
+    const content = '\ufeff' + [headers.join(','), example.join(',')].join('\n')
+    const blob = new Blob([content], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'user_template.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+  } else {
+    // Excel 模板通过 xlsx 库生成
+    import('xlsx').then((XLSX) => {
+      const ws = XLSX.utils.aoa_to_sheet([headers, example])
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'users')
+      XLSX.writeFile(wb, 'user_template.xlsx')
+    })
+  }
+}
 
 interface CreateRecord {
   key: string
@@ -93,8 +117,8 @@ const BatchCreate: React.FC = () => {
 
         <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
           {[
-            { title: 'CSV模板', desc: '逗号分隔格式', format: 'csv' },
-            { title: 'Excel模板', desc: 'xlsx格式', format: 'xlsx' },
+            { title: 'CSV模板', desc: '逗号分隔格式', format: 'csv' as const },
+            { title: 'Excel模板', desc: 'xlsx格式', format: 'xlsx' as const },
           ].map((tpl) => (
             <div
               key={tpl.title}
@@ -104,14 +128,7 @@ const BatchCreate: React.FC = () => {
               }}
               onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#1a1a1a' }}
               onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#eee' }}
-              onClick={async () => {
-                try {
-                  await tauriService.generateTemplate(tpl.format, '')
-                  message.success(`${tpl.title}已生成`)
-                } catch (err) {
-                  message.error(`模板生成失败: ${err}`)
-                }
-              }}
+              onClick={() => downloadTemplate(tpl.format)}
             >
               <div style={{ fontSize: 12, fontWeight: 500, color: '#1a1a1a', marginBottom: 2 }}>{tpl.title}</div>
               <div style={{ fontSize: 11, color: '#999' }}>{tpl.desc}</div>

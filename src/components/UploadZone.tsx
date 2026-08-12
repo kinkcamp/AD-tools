@@ -1,5 +1,7 @@
 import React, { useCallback, useState } from 'react'
 import { message } from 'antd'
+import Papa from 'papaparse'
+import * as XLSX from 'xlsx'
 import type { ParsedRecord } from '../types'
 
 interface UploadZoneProps {
@@ -8,39 +10,71 @@ interface UploadZoneProps {
   accept?: string
 }
 
+const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
+
 const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onFileParsed, accept = '.csv,.xlsx,.xls' }) => {
   const [fileName, setFileName] = useState('')
   const [parsing, setParsing] = useState(false)
 
   const handleFile = useCallback(async (file: File) => {
+    if (file.size > MAX_FILE_SIZE) {
+      message.error('文件大小超过 10MB 限制')
+      return
+    }
     setFileName(file.name)
     onFileSelect?.(file)
 
-    if (onFileParsed) {
-      setParsing(true)
-      try {
-        // In Tauri env, use the Rust file parser via IPC
-        // For now, parse client-side as fallback
+    if (!onFileParsed) return
+
+    setParsing(true)
+    try {
+      let records: ParsedRecord[] = []
+
+      if (file.name.toLowerCase().endsWith('.csv')) {
         const text = await file.text()
-        if (file.name.endsWith('.csv')) {
-          const lines = text.trim().split('\n')
-          const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''))
-          const records: ParsedRecord[] = lines.slice(1).map(line => {
-            const values = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''))
+        const result = Papa.parse<Record<string, string>>(text, {
+          header: true,
+          skipEmptyLines: true,
+          transformHeader: (h) => h.trim(),
+        })
+        if (result.errors.length > 0 && result.data.length === 0) {
+          throw new Error(result.errors[0].message)
+        }
+        records = result.data
+          .filter(row => Object.values(row).some(v => v && v.trim() !== ''))
+          .map(row => {
             const fields: Record<string, string> = {}
-            headers.forEach((h, i) => { fields[h] = values[i] || '' })
+            Object.entries(row).forEach(([k, v]) => { fields[k] = (v ?? '').trim() })
             return { fields }
           })
-          onFileParsed(records)
-          message.success(`已解析 ${records.length} 条记录`)
-        } else {
-          message.info('Excel 文件解析需要 Tauri 后端支持')
-        }
-      } catch (err) {
-        message.error(`文件解析失败: ${err}`)
-      } finally {
-        setParsing(false)
+      } else if (file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls')) {
+        const buffer = await file.arrayBuffer()
+        const workbook = XLSX.read(buffer, { type: 'array' })
+        const sheet = workbook.Sheets[workbook.SheetNames[0]]
+        if (!sheet) throw new Error('工作簿中没有工作表')
+        const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' })
+        records = rows
+          .filter(row => Object.values(row).some(v => String(v).trim() !== ''))
+          .map(row => {
+            const fields: Record<string, string> = {}
+            Object.entries(row).forEach(([k, v]) => { fields[String(k).trim()] = String(v).trim() })
+            return { fields }
+          })
+      } else {
+        throw new Error('不支持的文件格式，请使用 CSV 或 Excel')
       }
+
+      if (records.length === 0) {
+        message.warning('文件中没有有效数据')
+      } else {
+        message.success(`已解析 ${records.length} 条记录`)
+      }
+      onFileParsed(records)
+    } catch (err) {
+      message.error(`文件解析失败: ${err}`)
+      setFileName('')
+    } finally {
+      setParsing(false)
     }
   }, [onFileSelect, onFileParsed])
 

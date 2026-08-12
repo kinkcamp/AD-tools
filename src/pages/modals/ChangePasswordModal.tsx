@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Modal, Input, Checkbox, Button } from 'antd'
+import { Modal, Input, Checkbox, Button, message } from 'antd'
 
 interface ChangePasswordModalProps {
   open: boolean
@@ -20,6 +20,22 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
   const strengthLabels = ['', '弱', '中', '强']
   const strengthColors = ['', '#dc2626', '#d97706', '#16a34a']
 
+  const handleConfirm = () => {
+    if (!password) {
+      message.error('请输入新密码')
+      return
+    }
+    if (password.length < 8) {
+      message.error('密码长度不能少于 8 位')
+      return
+    }
+    if (password !== confirmPassword) {
+      message.error('两次输入的密码不一致')
+      return
+    }
+    onConfirm(password, forceChange)
+  }
+
   return (
     <Modal
       open={open}
@@ -27,7 +43,7 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
       onCancel={onClose}
       footer={[
         <Button key="cancel" onClick={onClose}>取消</Button>,
-        <Button key="ok" type="primary" onClick={() => onConfirm(password, forceChange)}>确认修改</Button>,
+        <Button key="ok" type="primary" onClick={handleConfirm}>确认修改</Button>,
       ]}
       width={400}
     >
@@ -48,11 +64,6 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
         <div style={{ marginBottom: 10 }}>
           <Checkbox checked={forceChange} onChange={(e) => setForceChange(e.target.checked)}>
             <span style={{ fontSize: 12 }}>强制下次登录修改</span>
-          </Checkbox>
-        </div>
-        <div>
-          <Checkbox>
-            <span style={{ fontSize: 12 }}>生成随机密码</span>
           </Checkbox>
         </div>
       </div>

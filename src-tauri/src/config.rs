@@ -68,5 +68,13 @@ pub fn load_config() -> Result<AppConfig, String> {
 pub fn save_config(config: &AppConfig) -> Result<(), String> {
     let path = config_path();
     let content = serde_json::to_string_pretty(config).map_err(|e| format!("序列化配置失败: {}", e))?;
-    fs::write(&path, content).map_err(|e| format!("保存配置失败: {}", e))
+    fs::write(&path, content).map_err(|e| format!("保存配置失败: {}", e))?;
+    // 限制配置文件权限为仅当前用户可读写（含绑定密码）
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600))
+            .map_err(|e| format!("设置文件权限失败: {}", e))?;
+    }
+    Ok(())
 }
