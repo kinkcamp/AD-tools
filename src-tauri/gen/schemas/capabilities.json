@@ -1,1 +1,1 @@
-{}
+{"default":{"identifier":"default","description":"主窗口默认权限：允许事件监听（批量操作实时进度推送）","local":true,"windows":["main"],"permissions":["core:event:default"]}}

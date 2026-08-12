@@ -82,10 +82,19 @@ const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onFileParsed, acc
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = accept
+    input.style.display = 'none'
+    // 挂到 DOM 上再触发：WKWebView 中未挂载的 input 偶发收不到 change 事件
+    document.body.appendChild(input)
+    let picked = false
     input.onchange = (e) => {
+      picked = true
       const file = (e.target as HTMLInputElement).files?.[0]
       if (file) handleFile(file)
+      input.remove()
     }
+    // 用户取消选择时移除 input，避免 DOM 泄漏
+    input.addEventListener('cancel', () => input.remove())
+    window.setTimeout(() => { if (!picked && input.isConnected) input.remove() }, 5 * 60 * 1000)
     input.click()
   }, [handleFile, accept])
 
