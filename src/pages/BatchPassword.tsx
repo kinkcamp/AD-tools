@@ -3,7 +3,6 @@ import { Select, Input, Checkbox, Button, Table, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import TopBar from '../components/TopBar'
 import UploadZone from '../components/UploadZone'
-import TemplateButtons from '../components/TemplateButtons'
 import { tauriService } from '../services/tauri'
 import type { BatchPasswordItem, BatchResult, ParsedRecord } from '../types'
 
@@ -184,7 +183,6 @@ const BatchPassword: React.FC = () => {
           </div>
         </div>
 
-        <TemplateButtons />
         <UploadZone onFileParsed={handleFileParsed} />
 
         {records.length > 0 && (

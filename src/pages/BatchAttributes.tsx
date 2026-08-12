@@ -3,7 +3,6 @@ import { Table, Button, Select, Input, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import TopBar from '../components/TopBar'
 import UploadZone from '../components/UploadZone'
-import TemplateButtons from '../components/TemplateButtons'
 import { tauriService } from '../services/tauri'
 import type { BatchResult, ParsedRecord } from '../types'
 
@@ -227,7 +226,6 @@ const BatchAttributes: React.FC = () => {
           <Button size="small" onClick={addRule}>+ 添加规则</Button>
         </div>
 
-        <TemplateButtons />
         <UploadZone onFileParsed={handleFileParsed} />
 
         {records.length > 0 && (
