@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Input, Button, message } from 'antd'
+import { Input, Button, Checkbox, message } from 'antd'
 import TopBar from '../components/TopBar'
 import { tauriService } from '../services/tauri'
 import type { AppConfig } from '../types'
@@ -24,6 +24,7 @@ const defaultConfig: AppConfig = {
   domain: '',
   username: '',
   password: '',
+  insecureTls: false,
 }
 
 const Settings: React.FC = () => {
@@ -38,7 +39,7 @@ const Settings: React.FC = () => {
     }).catch(() => {})
   }, [])
 
-  const update = (field: keyof AppConfig, value: string) => {
+  const update = (field: keyof AppConfig, value: string | boolean) => {
     setConfig(prev => ({ ...prev, [field]: value }))
   }
 
@@ -138,6 +139,15 @@ const Settings: React.FC = () => {
                 style={{ fontSize: 12, background: '#f5f5f5' }}
               />
             </div>
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <Checkbox
+              checked={!!config.insecureTls}
+              onChange={(e) => update('insecureTls', e.target.checked)}
+              style={{ fontSize: 12 }}
+            >
+              跳过证书验证（测试环境自建 CA 时启用，否则加密连接会因证书链不受信任而回退为明文）
+            </Checkbox>
           </div>
         </div>
 

@@ -100,13 +100,16 @@ impl LdapClient {
     }
 
     /// 依次尝试三种传输方式：LDAPS(:636) → LDAP+StartTLS(:389) → 明文 LDAP(:389)。
-    /// 域控未安装服务器证书时 LDAPS/StartTLS 均不可用，只能回退明文。
+    /// 域控未安装服务器证书时 LDAPS/StartTLS 均不可用，只能回退明文；
+    /// 自建 CA 证书可在配置中开启跳过证书验证（insecure_tls）使 LDAPS 生效。
     async fn open_transport(&self) -> Result<(ldap3::Ldap, &'static str), String> {
-        let settings = LdapConnSettings::new().set_conn_timeout(CONNECT_TIMEOUT);
+        let settings = LdapConnSettings::new()
+            .set_conn_timeout(CONNECT_TIMEOUT)
+            .set_no_tls_verify(self.config.insecure_tls);
         let ssl_url = format!("ldaps://{}:636", self.config.server);
         let plain_url = format!("ldap://{}:389", self.config.server);
 
-        // 1) LDAPS（证书验证开启）
+        // 1) LDAPS（insecure_tls 开启时跳过证书链验证）
         if let Ok((conn, ldap)) = LdapConnAsync::with_settings(settings.clone(), &ssl_url).await {
             ldap3::drive!(conn);
             return Ok((ldap, "LDAPS(SSL加密)"));

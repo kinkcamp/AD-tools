@@ -8,6 +8,9 @@ pub struct AppConfig {
     pub domain: String,
     pub username: String,
     pub password: String,
+    /// 跳过 TLS 证书验证（测试环境自建 CA 时使用），default 兼容旧配置
+    #[serde(default, rename = "insecureTls")]
+    pub insecure_tls: bool,
 }
 
 impl AppConfig {
@@ -40,6 +43,7 @@ impl Default for AppConfig {
             domain: String::new(),
             username: String::new(),
             password: String::new(),
+            insecure_tls: false,
         }
     }
 }

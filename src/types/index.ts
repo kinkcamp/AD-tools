@@ -13,6 +13,7 @@ export interface AppConfig {
   domain: string
   username: string
   password: string
+  insecureTls?: boolean
 }
 
 export interface BatchResultItem {
