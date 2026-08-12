@@ -288,7 +288,8 @@ impl LdapClient {
             let v = v.trim();
             if v.is_empty() { continue; }
             match k.as_str() {
-                "userPrincipalName" | "sAMAccountName" | "ou" | "password" => continue,
+                // 已单独处理的属性跳过，避免重复值导致 add 失败
+                "userPrincipalName" | "sAMAccountName" | "displayName" | "ou" | "password" => continue,
                 _ => attrs.push((k.clone(), HashSet::from([v.to_string()]))),
             }
         }
