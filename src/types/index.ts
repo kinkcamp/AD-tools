@@ -27,3 +27,14 @@ export interface BatchResult {
   failed: number
   details: { username: string; success: boolean; message: string }[]
 }
+
+export interface ParsedRecord {
+  fields: Record<string, string>
+}
+
+export interface ParseResult {
+  records: ParsedRecord[]
+  headers: string[]
+  errors: string[]
+  warnings: string[]
+}
