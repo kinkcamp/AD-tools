@@ -458,14 +458,40 @@ impl LdapClient {
         let mut seen_in_file: HashMap<String, bool> = HashMap::new();
         let mut details = Vec::with_capacity(total);
 
+        // 阶段1.5 目标 OU 存在性预检查：OU 不存在时 AD 会报难懂的 rc=10 referral/rc=32，
+        // 提前拦截并给出明确提示（模板示例中的 company.com 占位 OU 是常见踩坑点）
+        let mut bad_parents: HashSet<String> = HashSet::new();
+        let parents: HashSet<String> = users.iter()
+            .map(|u| if u.ou.trim().is_empty() { self.config.base_dn() } else { u.ou.trim().to_string() })
+            .collect();
+        for parent in &parents {
+            let exists = match ldap.search(parent, Scope::Base, "(objectClass=*)", vec!["distinguishedName"]).await {
+                Ok(res) => match res.success() {
+                    Ok((entries, _)) => !entries.is_empty(),
+                    Err(_) => false,
+                },
+                Err(_) => false,
+            };
+            if !exists {
+                bad_parents.insert(parent.clone());
+            }
+        }
+
         // 阶段2 逐个创建，每完成一个实时推送进度
         for (i, spec) in users.iter().enumerate() {
             let name_lc = spec.s_am_account_name.to_lowercase();
+            let parent = if spec.ou.trim().is_empty() { self.config.base_dn() } else { spec.ou.trim().to_string() };
             let item = if *seen_in_file.get(&name_lc).unwrap_or(&false) {
                 BatchResultItem {
                     username: spec.s_am_account_name.clone(),
                     success: false,
                     message: "文件内用户名重复，已跳过".to_string(),
+                }
+            } else if bad_parents.contains(&parent) {
+                BatchResultItem {
+                    username: spec.s_am_account_name.clone(),
+                    success: false,
+                    message: format!("目标 OU 在域中不存在（{}），已跳过，请修改 ou 列或默认 OU", parent),
                 }
             } else if existing.contains(&name_lc) {
                 BatchResultItem {

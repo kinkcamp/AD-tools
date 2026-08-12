@@ -118,7 +118,7 @@ pub fn generate_csv_template(path: &str) -> Result<(), String> {
     writer.write_record(&headers)
         .map_err(|e| format!("写入表头失败: {}", e))?;
 
-    writer.write_record(&["zhangsan", "张三", "CN=Users,DC=company,DC=com", "Init@2026", "zhangsan@company.com", "技术部", "工程师", "13800138000", "", "zhangsan@company.com", "三", "张"])
+    writer.write_record(&["zhangsan", "张三", "", "Init@2026", "zhangsan@company.com", "技术部", "工程师", "13800138000", "", "zhangsan@company.com", "三", "张"])
         .map_err(|e| format!("写入示例失败: {}", e))?;
 
     writer.flush().map_err(|e| format!("刷新失败: {}", e))?;
