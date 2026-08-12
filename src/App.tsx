@@ -7,6 +7,7 @@ import BatchPassword from './pages/BatchPassword'
 import BatchGroup from './pages/BatchGroup'
 import BatchAttributes from './pages/BatchAttributes'
 import Settings from './pages/Settings'
+import Logs from './pages/Logs'
 
 const App: React.FC = () => (
   <BrowserRouter>
@@ -18,6 +19,7 @@ const App: React.FC = () => (
         <Route path="/batch-group" element={<BatchGroup />} />
         <Route path="/batch-attributes" element={<BatchAttributes />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/logs" element={<Logs />} />
       </Route>
     </Routes>
   </BrowserRouter>
