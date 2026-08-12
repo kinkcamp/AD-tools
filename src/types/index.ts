@@ -9,16 +9,10 @@ export interface ADUser {
 }
 
 export interface AppConfig {
-  ldapHost: string
-  ldapPort: number
-  baseDN: string
-  bindDN: string
-  bindPassword: string
-  sslEnabled: boolean
-  startTls: boolean
-  verifyCert: boolean
-  caCertPath: string
-  ldapVersion: string
+  server: string
+  domain: string
+  username: string
+  password: string
 }
 
 export interface BatchResult {

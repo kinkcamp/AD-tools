@@ -2,7 +2,6 @@ import React, { useState } from 'react'
 import { Table, Button, Select, Input, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import TopBar from '../components/TopBar'
-import SearchBar from '../components/SearchBar'
 import UploadZone from '../components/UploadZone'
 import type { ParsedRecord } from '../types'
 
@@ -88,7 +87,6 @@ const BatchAttributes: React.FC = () => {
   return (
     <>
       <TopBar title="批量修改属性" />
-      <SearchBar />
       <div style={{ flex: 1, padding: 16, overflowY: 'auto' }}>
         <div style={{ border: '1px solid #eee', borderRadius: 8, padding: 16, marginBottom: 16 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#1a1a1a', marginBottom: 12 }}>选择要修改的属性</div>

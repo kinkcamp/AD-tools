@@ -2,7 +2,6 @@ import React, { useState } from 'react'
 import { Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import TopBar from '../components/TopBar'
-import SearchBar from '../components/SearchBar'
 import StatsRow from '../components/StatsRow'
 
 interface LogRecord {
@@ -59,7 +58,6 @@ const Logs: React.FC = () => {
   return (
     <>
       <TopBar title="操作日志" />
-      <SearchBar />
       <div style={{ flex: 1, padding: 16, overflowY: 'auto' }}>
         <StatsRow items={[
           { label: '今日操作', value: logs.length },

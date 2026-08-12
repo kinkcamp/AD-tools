@@ -4,31 +4,46 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
-    pub ldap_host: String,
-    pub ldap_port: u16,
-    pub base_dn: String,
-    pub bind_dn: String,
-    pub bind_password: String,
-    pub ssl_enabled: bool,
-    pub start_tls: bool,
-    pub verify_cert: bool,
-    pub ca_cert_path: String,
-    pub ldap_version: String,
+    pub server: String,
+    pub domain: String,
+    pub username: String,
+    pub password: String,
+}
+
+impl AppConfig {
+    /// Auto-derive Base DN from domain: "company.com" -> "DC=company,DC=com"
+    pub fn base_dn(&self) -> String {
+        self.domain
+            .split('.')
+            .filter(|s| !s.is_empty())
+            .map(|part| format!("DC={}", part))
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+
+    /// Auto-derive Bind DN: "admin" + base_dn -> "CN=admin,DC=company,DC=com"
+    pub fn bind_dn(&self) -> String {
+        if self.username.contains('=') {
+            // User provided full DN
+            self.username.clone()
+        } else {
+            format!("CN={},{}", self.username, self.base_dn())
+        }
+    }
+
+    /// LDAP URL with SSL
+    pub fn ldap_url(&self) -> String {
+        format!("ldaps://{}:636", self.server)
+    }
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            ldap_host: "ldap://dc01.company.com".to_string(),
-            ldap_port: 636,
-            base_dn: "DC=company,DC=com".to_string(),
-            bind_dn: String::new(),
-            bind_password: String::new(),
-            ssl_enabled: true,
-            start_tls: false,
-            verify_cert: true,
-            ca_cert_path: String::new(),
-            ldap_version: "3".to_string(),
+            server: String::new(),
+            domain: String::new(),
+            username: String::new(),
+            password: String::new(),
         }
     }
 }

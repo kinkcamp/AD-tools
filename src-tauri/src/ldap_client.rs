@@ -10,7 +10,7 @@ pub struct ADUser {
     pub display_name: String,
     pub mail: String,
     pub department: String,
-    pub status: String, // "active", "disabled", "locked"
+    pub status: String,
     pub last_login: String,
 }
 
@@ -39,14 +39,10 @@ impl LdapClient {
     }
 
     async fn connect(&self) -> Result<ldap3::Ldap, String> {
-        let url = if self.config.ssl_enabled {
-            format!("ldaps://{}:{}", self.config.ldap_host, self.config.ldap_port)
-        } else {
-            format!("ldap://{}:{}", self.config.ldap_host, self.config.ldap_port)
-        };
+        let url = self.config.ldap_url();
 
         let settings = LdapConnSettings::new()
-            .set_no_tls_verify(!self.config.verify_cert);
+            .set_no_tls_verify(true);
 
         let (conn, mut ldap) = LdapConnAsync::with_settings(settings, &url)
             .await
@@ -54,9 +50,7 @@ impl LdapClient {
 
         ldap3::drive!(conn);
 
-        // simple_bind().await returns Result<LdapResult, LdapError>
-        // .success() on Result<LdapResult, LdapError> returns Result<LdapResult, LdapError>
-        ldap.simple_bind(&self.config.bind_dn, &self.config.bind_password)
+        ldap.simple_bind(&self.config.bind_dn(), &self.config.password)
             .await
             .map_err(|e| format!("认证失败: {}", e))?
             .success()
@@ -66,24 +60,20 @@ impl LdapClient {
     }
 
     pub async fn test_connection(&self) -> Result<String, String> {
-        let url = if self.config.ssl_enabled {
-            format!("ldaps://{}:{}", self.config.ldap_host, self.config.ldap_port)
-        } else {
-            format!("ldap://{}:{}", self.config.ldap_host, self.config.ldap_port)
-        };
-
+        let url = self.config.ldap_url();
         let mut ldap = self.connect().await?;
         ldap.unbind().await.ok();
-        Ok(format!("连接成功: {}", url))
+        Ok(format!("连接成功: {} · 域: {}", url, self.config.domain))
     }
 
     pub async fn search_users(&self, keyword: &str, _ou_filter: &str) -> Result<Vec<ADUser>, String> {
         let mut ldap = self.connect().await?;
+        let base_dn = self.config.base_dn();
 
         let filter = format!("(&(objectClass=user)(|(sAMAccountName=*{}*)(displayName=*{}*)(mail=*{}*)))", keyword, keyword, keyword);
         let attrs = vec!["sAMAccountName", "displayName", "mail", "department", "userAccountControl", "lastLogon"];
 
-        let (rs, _rc) = ldap.search(&self.config.base_dn, Scope::Subtree, &filter, attrs)
+        let (rs, _rc) = ldap.search(&base_dn, Scope::Subtree, &filter, attrs)
             .await
             .map_err(|e| format!("搜索失败: {}", e))?
             .success()
@@ -119,7 +109,6 @@ impl LdapClient {
     pub async fn change_password(&self, user_dn: &str, new_password: &str, force_change: bool) -> Result<(), String> {
         let mut ldap = self.connect().await?;
 
-        // Encode password as UTF-16LE wrapped in quotes
         let encoded_pw: Vec<u8> = format!("\"{}\"", new_password)
             .encode_utf16()
             .flat_map(|c| c.to_le_bytes())
@@ -188,7 +177,7 @@ impl LdapClient {
     }
 
     async fn add_user_to_group(&self, username: &str, group_dn: &str) -> Result<(), String> {
-        let user_dn = format!("CN={},{}", username, self.config.base_dn);
+        let user_dn = format!("CN={},{}", username, self.config.base_dn());
         let mut ldap = self.connect().await?;
 
         let mut vals: HashSet<Vec<u8>> = HashSet::new();

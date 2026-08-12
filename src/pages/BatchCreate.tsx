@@ -2,7 +2,6 @@ import React, { useState } from 'react'
 import { Table, Button, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import TopBar from '../components/TopBar'
-import SearchBar from '../components/SearchBar'
 import StepsBar from '../components/StepsBar'
 import UploadZone from '../components/UploadZone'
 import { tauriService } from '../services/tauri'
@@ -84,7 +83,6 @@ const BatchCreate: React.FC = () => {
   return (
     <>
       <TopBar title="批量创建用户" />
-      <SearchBar />
       <div style={{ flex: 1, padding: 16, overflowY: 'auto' }}>
         <StepsBar steps={[
           { label: '上传文件', status: step >= 0 ? 'done' : 'pending' },

@@ -31,15 +31,12 @@ const Sidebar: React.FC = () => {
   const navigate = useNavigate()
   const location = useLocation()
   const [connStatus, setConnStatus] = useState<ConnectionStatus>('unknown')
-  const [sslEnabled, setSslEnabled] = useState(false)
 
   useEffect(() => {
     tauriService.getConfig().then(cfg => {
-      setSslEnabled(cfg.sslEnabled)
-      if (!cfg.ldapHost) {
+      if (!cfg.server || !cfg.domain) {
         setConnStatus('no-config')
       } else {
-        // Try a quick connection test to get real status
         tauriService.testConnection(cfg).then(() => {
           setConnStatus('connected')
         }).catch(() => {
@@ -51,11 +48,11 @@ const Sidebar: React.FC = () => {
     })
   }, [location.pathname])
 
-  const statusConfig = {
-    unknown: { color: '#999', bg: '#999', label: '检测中...' },
-    connected: { color: sslEnabled ? '#52c41a' : '#d97706', bg: sslEnabled ? '#52c41a' : '#d97706', label: sslEnabled ? 'SSL 已连接' : '已连接 (未加密)' },
-    disconnected: { color: '#e54d4d', bg: '#e54d4d', label: '连接失败' },
-    'no-config': { color: '#999', bg: '#999', label: '未配置连接' },
+  const statusConfig: Record<ConnectionStatus, { color: string; label: string }> = {
+    unknown: { color: '#999', label: '检测中...' },
+    connected: { color: '#52c41a', label: 'SSL 已连接' },
+    disconnected: { color: '#e54d4d', label: '连接失败' },
+    'no-config': { color: '#999', label: '未配置连接' },
   }
 
   const status = statusConfig[connStatus]
@@ -102,7 +99,7 @@ const Sidebar: React.FC = () => {
       </div>
       <div style={{ padding: '12px 16px', borderTop: '1px solid #eee' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: status.color, fontWeight: 500 }}>
-          <div style={{ width: 6, height: 6, background: status.bg, borderRadius: '50%' }} />
+          <div style={{ width: 6, height: 6, background: status.color, borderRadius: '50%' }} />
           {status.label}
         </div>
       </div>
