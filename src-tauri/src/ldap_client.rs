@@ -327,9 +327,9 @@ impl LdapClient {
         Ok(())
     }
 
-    /// 创建用户：add 条目 → 设置密码激活。返回 Ok(密码是否设置成功)。
-    /// 条目已创建但设密失败时返回 Ok(false)，避免上层误判为未创建而重复提交
-    async fn create_user_impl(ldap: &mut ldap3::Ldap, config: &AppConfig, spec: &NewUserSpec) -> Result<bool, String> {
+    /// 创建用户：add 条目 → 设置密码激活。返回 Ok((密码是否设置成功, 同名改名后的显示名))。
+    /// 条目已创建但设密失败时返回 Ok(false, _)，避免上层误判为未创建而重复提交
+    async fn create_user_impl(ldap: &mut ldap3::Ldap, config: &AppConfig, spec: &NewUserSpec) -> Result<(bool, Option<String>), String> {
         if spec.s_am_account_name.trim().is_empty() {
             return Err("缺少用户名(sAMAccountName)".to_string());
         }
@@ -344,7 +344,6 @@ impl LdapClient {
         };
         let base_dn = config.base_dn();
         let parent = if spec.ou.trim().is_empty() { base_dn.clone() } else { spec.ou.trim().to_string() };
-        let dn = format!("CN={},{}", cn, parent);
 
         let upn = spec.attributes.get("userPrincipalName")
             .filter(|v| !v.trim().is_empty())
@@ -376,11 +375,28 @@ impl LdapClient {
             .map(|(k, vs)| (k.as_str(), vs.iter().map(|s| s.as_str()).collect()))
             .collect();
 
-        ldap.add(&dn, add_attrs)
-            .await
-            .map_err(|e| format!("创建用户条目失败: {}", e))?
-            .success()
-            .map_err(|e| format!("创建用户条目失败: {}", e))?;
+        // add：AD 的 DN 由 CN（显示名）决定，同名用户会报 rc=68 entryAlreadyExists，
+        // 此时自动加数字后缀重试（张三 → 张三2），与登录名去重规则一致
+        let mut suffix = 0usize;
+        let (dn, renamed_to) = loop {
+            let try_cn = if suffix == 0 { cn.clone() } else { format!("{}{}", cn, suffix + 1) };
+            let try_dn = format!("CN={},{}", try_cn, parent);
+            match ldap.add(&try_dn, add_attrs.clone()).await {
+                Ok(res) => match res.success() {
+                    Ok(_) => break (try_dn, if suffix == 0 { None } else { Some(try_cn) }),
+                    // rc=68 entryAlreadyExists：同容器内 CN 冲突，换后缀重试
+                    Err(ldap3::LdapError::LdapResult { result: ldap3::LdapResult { rc: 68, .. }, .. }) => {
+                        suffix += 1;
+                        if suffix > 99 {
+                            return Err(format!("创建用户条目失败: 同名用户过多，无法生成唯一显示名（{}）", cn));
+                        }
+                        continue;
+                    }
+                    Err(e) => return Err(format!("创建用户条目失败: {}", e)),
+                },
+                Err(e) => return Err(format!("创建用户条目失败: {}", e)),
+            }
+        };
 
         // AD 标准三步流程：add（默认禁用）→ 设密 → 改 UAC=512 启用。
         // 设密失败（如无加密通道时 AD 拒绝改 unicodePwd）不启用账户，
@@ -394,9 +410,9 @@ impl LdapClient {
                     .map_err(|e| format!("启用账户失败: {}", e))?
                     .success()
                     .map_err(|e| format!("启用账户失败: {}", e))?;
-                Ok(true)
+                Ok((true, renamed_to))
             }
-            Err(_) => Ok(false),
+            Err(_) => Ok((false, renamed_to)),
         }
     }
 
@@ -465,15 +481,19 @@ impl LdapClient {
                     current: i + 1, total,
                 });
                 match Self::create_user_impl(&mut ldap, &self.config, spec).await {
-                    Ok(true) => BatchResultItem {
+                    Ok((true, renamed)) => BatchResultItem {
                         username: spec.s_am_account_name.clone(),
                         success: true,
-                        message: "创建成功".to_string(),
+                        message: match renamed {
+                            Some(cn) => format!("创建成功（同名自动改名显示名为: {}）", cn),
+                            None => "创建成功".to_string(),
+                        },
                     },
-                    Ok(false) => BatchResultItem {
+                    Ok((false, renamed)) => BatchResultItem {
                         username: spec.s_am_account_name.clone(),
                         success: true,
-                        message: "用户已创建，但初始密码设置失败（域控未启用加密通道时 AD 拒绝改密），请勿重复创建，可用批量改密重试".to_string(),
+                        message: format!("用户已创建{}，但初始密码设置失败（域控未启用加密通道时 AD 拒绝改密），请勿重复创建，可用批量改密重试",
+                            renamed.map(|cn| format!("（显示名: {}）", cn)).unwrap_or_default()),
                     },
                     Err(e) => BatchResultItem {
                         username: spec.s_am_account_name.clone(),
