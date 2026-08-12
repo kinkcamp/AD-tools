@@ -151,6 +151,27 @@ const BatchCreate: React.FC = () => {
     }
   }
 
+  // 模板下载：优先从域控 schema 拉取 user 类全量字段动态生成，
+  // 模板含全部可写属性，填哪列写哪列，空列创建时自动跳过；无法连接时回退内置核心列
+  const handleDownloadTemplate = async (format: 'csv' | 'xlsx') => {
+    try {
+      const cfg = await tauriService.getConfig()
+      if (cfg.server && cfg.domain) {
+        const hide = message.loading('正在从域控获取用户字段…', 0)
+        try {
+          const attrs = await tauriService.getUserAttributes(cfg)
+          hide()
+          downloadTemplate(format, attrs)
+          return
+        } catch (e) {
+          hide()
+          message.warning(`从域控获取字段失败，使用内置模板：${e instanceof Error ? e.message : String(e)}`)
+        }
+      }
+    } catch { /* 配置读取失败，回退内置模板 */ }
+    downloadTemplate(format)
+  }
+
   const passCount = records.filter(r => r.status === 'pass').length
   const warnCount = records.filter(r => r.status === 'warn').length
 
@@ -234,7 +255,7 @@ const BatchCreate: React.FC = () => {
               }}
               onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#1a1a1a' }}
               onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#eee' }}
-              onClick={() => downloadTemplate(tpl.format)}
+              onClick={() => handleDownloadTemplate(tpl.format)}
             >
               <div style={{ fontSize: 12, fontWeight: 500, color: '#1a1a1a', marginBottom: 2 }}>{tpl.title}</div>
               <div style={{ fontSize: 11, color: '#999' }}>{tpl.desc}</div>

@@ -85,6 +85,12 @@ async fn batch_create_users(app: tauri::AppHandle, cfg: AppConfig, users: Vec<ld
 }
 
 #[tauri::command]
+async fn get_user_attributes(cfg: AppConfig) -> Result<Vec<String>, String> {
+    let client = LdapClient::new(cfg);
+    client.get_user_schema_attributes().await
+}
+
+#[tauri::command]
 async fn batch_change_passwords(cfg: AppConfig, items: Vec<ldap_client::BatchPasswordItem>) -> Result<ldap_client::BatchResult, String> {
     let operator = cfg.username.clone();
     let total = items.len();
@@ -163,6 +169,7 @@ pub fn run() {
             change_password,
             delete_user,
             batch_create_users,
+            get_user_attributes,
             batch_change_passwords,
             batch_add_to_group,
             batch_modify_attributes,

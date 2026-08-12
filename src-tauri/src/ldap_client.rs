@@ -359,16 +359,26 @@ impl LdapClient {
         if !spec.display_name.trim().is_empty() {
             attrs.push(("displayName".to_string(), HashSet::from([spec.display_name.clone()])));
         }
-        // 模板中的其余列（mail/department/title/telephoneNumber 等）
+        // 模板中的其余列（mail/department/title/telephoneNumber 等），有值才写入
         for (k, v) in &spec.attributes {
             let v = v.trim();
             if v.is_empty() { continue; }
-            match k.as_str() {
-                // 已单独处理的属性跳过，避免重复值导致 add 失败；
-                // userAccountControl 不能在 add 时设置（rc=53），改密后再启用
-                "userPrincipalName" | "sAMAccountName" | "displayName" | "ou" | "password" | "objectClass" | "userAccountControl" => continue,
-                _ => attrs.push((k.clone(), HashSet::from([v.to_string()]))),
-            }
+            // 跳过清单（大小写不敏感）：已单独处理的 + 系统/只读/危险属性
+            //（模板现在含 schema 全量字段，必须拦住不能由文件设置的列）
+            let lk = k.to_ascii_lowercase();
+            const SKIP_ATTRS: &[&str] = &[
+                "userprincipalname", "samaccountname", "displayname", "ou", "password",
+                "objectclass", "useraccountcontrol",
+                "objectcategory", "objectguid", "objectsid", "name", "cn",
+                "instancetype", "whencreated", "whenchanged", "usncreated", "usnchanged",
+                "usnlastobjrem", "unicodepwd", "lmpassword", "ntpassword",
+                "dscorepropagationdata", "replpropertymetadata", "replugtofdvector",
+                "priorsettime", "priorparent", "isdeleted", "isrecycled", "lastknownparent",
+                "msds-principalname", "msds-userpasswordexpirytimecomputed", "tokengroups",
+                "memberof", "primarygroupid",
+            ];
+            if SKIP_ATTRS.contains(&lk.as_str()) { continue; }
+            attrs.push((k.clone(), HashSet::from([v.to_string()])));
         }
 
         let add_attrs: Vec<(&str, HashSet<&str>)> = attrs.iter()
@@ -557,6 +567,71 @@ impl LdapClient {
 
         ldap.unbind().await.ok();
         Ok(BatchResult::from_details(details))
+    }
+
+    /// 从域控 schema 拉取 user 类（含继承链 person/organizationalPerson/top）的全部属性名，
+    /// 用于动态生成统一模板：模板含全量字段，用户填哪列写哪列，空列跳过
+    pub async fn get_user_schema_attributes(&self) -> Result<Vec<String>, String> {
+        let (mut ldap, _) = self.connect().await?;
+
+        // 1. RootDSE 获取架构命名上下文
+        let res = ldap.search("", Scope::Base, "(objectClass=*)", vec!["schemaNamingContext"])
+            .await.map_err(|e| format!("查询架构失败: {}", e))?;
+        let (entries, _) = res.success().map_err(|e| format!("查询架构失败: {}", e))?;
+        let root = entries.into_iter().next().ok_or_else(|| "未获取到 RootDSE".to_string())?;
+        let root = SearchEntry::construct(root);
+        let schema_nc = root.attrs.get("schemaNamingContext")
+            .and_then(|v| v.first()).cloned()
+            .ok_or_else(|| "未获取到架构命名上下文".to_string())?;
+
+        // 2. 沿继承链向上（user → person → organizationalPerson → top）收集全部可设属性
+        // 类在 schema 容器内的 CN 与显示名不同（如 CN=Class-Person），需用 lDAPDisplayName 搜索定位
+        let mut names: HashSet<String> = HashSet::new();
+        let mut class = "user".to_string();
+        loop {
+            let filter = format!("(&(objectClass=classSchema)(lDAPDisplayName={}))", ldap_escape(&class));
+            let res = ldap.search(&schema_nc, Scope::OneLevel, &filter,
+                vec!["mayContain", "systemMayContain", "mustContain", "systemMustContain", "subClassOf"])
+                .await.map_err(|e| format!("查询架构类失败: {}", e))?;
+            let (entries, _) = res.success().map_err(|e| format!("查询架构类失败: {}", e))?;
+            let entry = match entries.into_iter().next() {
+                Some(e) => SearchEntry::construct(e),
+                None => break,
+            };
+            for key in ["mayContain", "systemMayContain", "mustContain", "systemMustContain"] {
+                if let Some(vals) = entry.attrs.get(key) {
+                    for v in vals { names.insert(v.clone()); }
+                }
+            }
+            match entry.attrs.get("subClassOf").and_then(|v| v.first()) {
+                Some(parent) if !parent.eq_ignore_ascii_case("top") => class = parent.clone(),
+                _ => break,
+            }
+        }
+
+        // 3. 过滤系统/只读/危险属性（与 create 跳过清单一致）与内部前缀，按名称排序
+        let skip: HashSet<&str> = [
+            "objectclass", "objectcategory", "objectguid", "objectsid", "name", "cn",
+            "samaccountname", "userprincipalname", "displayname", "instancetype",
+            "whencreated", "whenchanged", "usncreated", "usnchanged", "usnlastobjrem",
+            "unicodepwd", "lmpassword", "ntpassword", "dscorepropagationdata",
+            "replpropertymetadata", "replugtofdvector", "priorsettime", "priorparent",
+            "isdeleted", "isrecycled", "lastknownparent", "msds-principalname",
+            "msds-userpasswordexpirytimecomputed", "tokengroups", "memberof",
+            "primarygroupid", "useraccountcontrol", "distinguishedname",
+        ].into_iter().collect();
+        let mut result: Vec<String> = names.into_iter()
+            .filter(|n| {
+                let lk = n.to_ascii_lowercase();
+                !skip.contains(lk.as_str())
+                    && !lk.starts_with("msds-")
+                    && !lk.starts_with("ms-")
+            })
+            .collect();
+        result.sort_by_key(|s| s.to_ascii_lowercase());
+
+        ldap.unbind().await.ok();
+        Ok(result)
     }
 
     pub async fn batch_change_passwords(&self, items: Vec<BatchPasswordItem>) -> Result<BatchResult, String> {

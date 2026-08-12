@@ -20,11 +20,15 @@ export const TEMPLATE_EXAMPLE = [
 const csvField = (value: string): string =>
   /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
 
-export const downloadTemplate = (format: 'csv' | 'xlsx') => {
+// 生成并下载模板：核心 12 列 + 从域控 schema 拉取的全量字段（extraHeaders）
+// 创建时只写入有值的列，空列自动跳过
+export const downloadTemplate = (format: 'csv' | 'xlsx', extraHeaders: string[] = []) => {
+  const headers = [...TEMPLATE_HEADERS, ...extraHeaders.filter(h => !TEMPLATE_HEADERS.includes(h))]
+  const example = [...TEMPLATE_EXAMPLE, ...headers.slice(TEMPLATE_HEADERS.length).map(() => '')]
   if (format === 'csv') {
     const content = '\ufeff' + [
-      TEMPLATE_HEADERS.join(','),
-      TEMPLATE_EXAMPLE.map(csvField).join(','),
+      headers.join(','),
+      example.map(csvField).join(','),
     ].join('\n')
     const blob = new Blob([content], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
@@ -36,7 +40,7 @@ export const downloadTemplate = (format: 'csv' | 'xlsx') => {
   } else {
     // Excel 模板通过 xlsx 库动态导入生成，避免计入首屏包体
     import('xlsx').then((XLSX) => {
-      const ws = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS, TEMPLATE_EXAMPLE])
+      const ws = XLSX.utils.aoa_to_sheet([headers, example])
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'users')
       XLSX.writeFile(wb, 'user_template.xlsx')

@@ -9,6 +9,8 @@ export const tauriService = {
   getConfig: () => invoke<AppConfig>('get_config'),
   saveConfig: (cfg: AppConfig) => invoke<void>('save_config_cmd', { cfg }),
   testConnection: (cfg: AppConfig) => invoke<string>('test_connection', { cfg }),
+  // 从域控 schema 拉取 user 类全部可写属性（动态生成模板字段）
+  getUserAttributes: (cfg: AppConfig) => invoke<string[]>('get_user_attributes', { cfg }),
 
   // Users
   searchUsers: (cfg: AppConfig, keyword: string, ouFilter: string) =>
