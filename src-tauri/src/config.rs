@@ -21,19 +21,15 @@ impl AppConfig {
             .join(",")
     }
 
-    /// Auto-derive Bind DN: "admin" + base_dn -> "CN=admin,DC=company,DC=com"
+    /// 绑定身份：优先 UPN 格式（user@domain），AD 支持 UPN 绑定且与用户所在 OU 无关；
+    /// 用户也可直接填写完整 DN
     pub fn bind_dn(&self) -> String {
-        if self.username.contains('=') {
-            // User provided full DN
+        if self.username.contains('=') || self.username.contains('@') {
+            // 用户提供了完整 DN 或 UPN
             self.username.clone()
         } else {
-            format!("CN={},{}", self.username, self.base_dn())
+            format!("{}@{}", self.username, self.domain)
         }
-    }
-
-    /// LDAP URL with SSL
-    pub fn ldap_url(&self) -> String {
-        format!("ldaps://{}:636", self.server)
     }
 }
 

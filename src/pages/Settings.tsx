@@ -82,7 +82,9 @@ const Settings: React.FC = () => {
     ? config.domain.split('.').filter(Boolean).map(p => `DC=${p}`).join(',')
     : '—'
   const derivedBindDN = config.username
-    ? (config.username.includes('=') ? config.username : `CN=${config.username},${derivedBaseDN}`)
+    ? (config.username.includes('=') || config.username.includes('@')
+        ? config.username
+        : config.domain ? `${config.username}@${config.domain}` : '—')
     : '—'
 
   return (
@@ -164,12 +166,12 @@ const Settings: React.FC = () => {
               <div style={{ fontSize: 11, color: '#1a1a1a', fontFamily: 'monospace' }}>{derivedBaseDN}</div>
             </div>
             <div>
-              <div style={{ fontSize: 10, color: '#999', marginBottom: 2 }}>Bind DN</div>
+              <div style={{ fontSize: 10, color: '#999', marginBottom: 2 }}>登录身份</div>
               <div style={{ fontSize: 11, color: '#1a1a1a', fontFamily: 'monospace' }}>{derivedBindDN}</div>
             </div>
             <div>
               <div style={{ fontSize: 10, color: '#999', marginBottom: 2 }}>连接方式</div>
-              <div style={{ fontSize: 11, color: '#16a34a', fontFamily: 'monospace' }}>LDAPS :636 (SSL)</div>
+              <div style={{ fontSize: 11, color: '#16a34a', fontFamily: 'monospace' }}>自动协商 LDAPS → StartTLS → LDAP</div>
             </div>
           </div>
         </div>

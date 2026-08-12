@@ -98,34 +98,55 @@ impl LdapClient {
         Self { config }
     }
 
-    async fn connect(&self) -> Result<ldap3::Ldap, String> {
-        let url = self.config.ldap_url();
+    /// 依次尝试三种传输方式：LDAPS(:636) → LDAP+StartTLS(:389) → 明文 LDAP(:389)。
+    /// 域控未安装服务器证书时 LDAPS/StartTLS 均不可用，只能回退明文。
+    async fn open_transport(&self) -> Result<(ldap3::Ldap, &'static str), String> {
+        let settings = LdapConnSettings::new().set_conn_timeout(CONNECT_TIMEOUT);
+        let ssl_url = format!("ldaps://{}:636", self.config.server);
+        let plain_url = format!("ldap://{}:389", self.config.server);
 
-        // 生产环境必须验证服务器证书，防止中间人攻击
-        let settings = LdapConnSettings::new()
-            .set_no_tls_verify(false)
-            .set_conn_timeout(CONNECT_TIMEOUT);
+        // 1) LDAPS（证书验证开启）
+        if let Ok((conn, ldap)) = LdapConnAsync::with_settings(settings.clone(), &ssl_url).await {
+            ldap3::drive!(conn);
+            return Ok((ldap, "LDAPS(SSL加密)"));
+        }
 
-        let (conn, mut ldap) = LdapConnAsync::with_settings(settings, &url)
-            .await
-            .map_err(|e| format!("连接失败: {}", e))?;
+        // 2) LDAP + StartTLS
+        if let Ok((conn, ldap)) = LdapConnAsync::with_settings(settings.clone().set_starttls(true), &plain_url).await {
+            ldap3::drive!(conn);
+            return Ok((ldap, "StartTLS(加密)"));
+        }
 
-        ldap3::drive!(conn);
+        // 3) 明文 LDAP（仅用于无证书环境，密码类操作会被 AD 拒绝）
+        if let Ok((conn, ldap)) = LdapConnAsync::with_settings(settings, &plain_url).await {
+            ldap3::drive!(conn);
+            return Ok((ldap, "明文LDAP(未加密)"));
+        }
+
+        Err(format!("无法连接 {}: LDAPS/StartTLS/LDAP 均失败，请检查服务器地址与防火墙", self.config.server))
+    }
+
+    async fn connect(&self) -> Result<(ldap3::Ldap, &'static str), String> {
+        let (mut ldap, mode) = self.open_transport().await?;
 
         ldap.simple_bind(&self.config.bind_dn(), &self.config.password)
             .await
             .map_err(|e| format!("认证失败: {}", e))?
             .success()
-            .map_err(|e| format!("认证失败: {}", e))?;
+            .map_err(|e| format!("认证失败(账户或密码错误): {}", e))?;
 
-        Ok(ldap)
+        Ok((ldap, mode))
     }
 
     pub async fn test_connection(&self) -> Result<String, String> {
-        let url = self.config.ldap_url();
-        let mut ldap = self.connect().await?;
+        let (mut ldap, mode) = self.connect().await?;
         ldap.unbind().await.ok();
-        Ok(format!("连接成功: {} · 域: {}", url, self.config.domain))
+        let warn = if mode.contains("明文") {
+            " · 警告: 域控未安装证书，当前为未加密连接"
+        } else {
+            ""
+        };
+        Ok(format!("连接成功 · {} · 域: {}{}", mode, self.config.domain, warn))
     }
 
     fn uac_status(uac: u32) -> &'static str {
@@ -135,7 +156,7 @@ impl LdapClient {
     }
 
     pub async fn search_users(&self, keyword: &str, _ou_filter: &str) -> Result<Vec<ADUser>, String> {
-        let mut ldap = self.connect().await?;
+        let (mut ldap, _) = self.connect().await?;
         let base_dn = self.config.base_dn();
 
         let kw = ldap_escape(keyword);
@@ -215,7 +236,7 @@ impl LdapClient {
     }
 
     pub async fn change_password(&self, user_dn: &str, new_password: &str, force_change: bool) -> Result<(), String> {
-        let mut ldap = self.connect().await?;
+        let (mut ldap, _) = self.connect().await?;
         Self::change_password_impl(&mut ldap, user_dn, new_password, force_change).await?;
         ldap.unbind().await.ok();
         Ok(())
@@ -310,7 +331,7 @@ impl LdapClient {
     }
 
     pub async fn batch_create_users(&self, users: Vec<NewUserSpec>) -> Result<BatchResult, String> {
-        let mut ldap = self.connect().await?;
+        let (mut ldap, _) = self.connect().await?;
         let mut details = Vec::with_capacity(users.len());
         for spec in &users {
             let res = Self::create_user_impl(&mut ldap, &self.config, spec).await;
@@ -332,7 +353,7 @@ impl LdapClient {
     }
 
     pub async fn batch_change_passwords(&self, items: Vec<BatchPasswordItem>) -> Result<BatchResult, String> {
-        let mut ldap = self.connect().await?;
+        let (mut ldap, _) = self.connect().await?;
         let base_dn = self.config.base_dn();
         let mut details = Vec::with_capacity(items.len());
 
@@ -368,7 +389,7 @@ impl LdapClient {
         if groups.is_empty() {
             return Err("未指定目标组".to_string());
         }
-        let mut ldap = self.connect().await?;
+        let (mut ldap, _) = self.connect().await?;
         let base_dn = self.config.base_dn();
 
         // 先解析所有组 DN，避免逐用户重复查询
@@ -430,7 +451,7 @@ impl LdapClient {
         if mods.is_empty() {
             return Err("未指定要修改的属性".to_string());
         }
-        let mut ldap = self.connect().await?;
+        let (mut ldap, _) = self.connect().await?;
         let base_dn = self.config.base_dn();
 
         let mut details = Vec::with_capacity(usernames.len());
@@ -490,7 +511,7 @@ impl LdapClient {
     }
 
     pub async fn delete_user(&self, user_dn: &str) -> Result<(), String> {
-        let mut ldap = self.connect().await?;
+        let (mut ldap, _) = self.connect().await?;
 
         ldap.delete(user_dn)
             .await
