@@ -311,8 +311,9 @@ impl LdapClient {
         Ok(())
     }
 
-    /// 创建单个用户：add 条目 → 设置密码 → 启用账户
-    async fn create_user_impl(ldap: &mut ldap3::Ldap, config: &AppConfig, spec: &NewUserSpec) -> Result<(), String> {
+    /// 创建用户：add 条目 → 设置密码激活。返回 Ok(密码是否设置成功)。
+    /// 条目已创建但设密失败时返回 Ok(false)，避免上层误判为未创建而重复提交
+    async fn create_user_impl(ldap: &mut ldap3::Ldap, config: &AppConfig, spec: &NewUserSpec) -> Result<bool, String> {
         if spec.s_am_account_name.trim().is_empty() {
             return Err("缺少用户名(sAMAccountName)".to_string());
         }
@@ -364,9 +365,12 @@ impl LdapClient {
             .success()
             .map_err(|e| format!("创建用户条目失败: {}", e))?;
 
-        Self::change_password_impl(ldap, &dn, &spec.password, false).await?;
-
-        Ok(())
+        // 设密失败（如无证书时 AD 拒绝明文通道改 unicodePwd）不算创建失败：
+        // 用户条目已存在，标记为已创建、待设密，用户可用批量改密补救
+        match Self::change_password_impl(ldap, &dn, &spec.password, false).await {
+            Ok(()) => Ok(true),
+            Err(_) => Ok(false),
+        }
     }
 
     pub async fn batch_create_users(&self, users: Vec<NewUserSpec>) -> Result<BatchResult, String> {
@@ -375,10 +379,15 @@ impl LdapClient {
         for spec in &users {
             let res = Self::create_user_impl(&mut ldap, &self.config, spec).await;
             details.push(match res {
-                Ok(()) => BatchResultItem {
+                Ok(true) => BatchResultItem {
                     username: spec.s_am_account_name.clone(),
                     success: true,
                     message: "创建成功".to_string(),
+                },
+                Ok(false) => BatchResultItem {
+                    username: spec.s_am_account_name.clone(),
+                    success: true,
+                    message: "用户已创建，但初始密码设置失败（域控未启用加密通道时 AD 拒绝改密），请勿重复创建，可用批量改密重试".to_string(),
                 },
                 Err(e) => BatchResultItem {
                     username: spec.s_am_account_name.clone(),
