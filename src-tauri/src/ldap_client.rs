@@ -1,4 +1,5 @@
 use ldap3::{LdapConnAsync, LdapConnSettings, Scope, SearchEntry};
+use ldap3::adapters::EntriesOnly;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
@@ -163,8 +164,10 @@ impl LdapClient {
         let filter = format!("(&(objectClass=user)(objectCategory=person)(|(sAMAccountName=*{}*)(displayName=*{}*)(mail=*{}*)))", kw, kw, kw);
         let attrs = vec!["sAMAccountName", "displayName", "mail", "department", "userAccountControl"];
 
-        // 流式拉取并限制最大条数，避免大域全量进内存
-        let mut stream = ldap.streaming_search(&base_dn, Scope::Subtree, &filter, attrs)
+        // 流式拉取并限制最大条数，避免大域全量进内存；
+        // 必须用 EntriesOnly 适配器：AD 会返回搜索引用(referral)消息，
+        // 不过滤会被当成条目解析导致 panic
+        let mut stream = ldap.streaming_search_with(EntriesOnly::new(), &base_dn, Scope::Subtree, &filter, attrs)
             .await
             .map_err(|e| format!("搜索失败: {}", e))?;
 
