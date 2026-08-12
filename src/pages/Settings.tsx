@@ -90,10 +90,7 @@ const Settings: React.FC = () => {
       <TopBar
         title="连接设置"
         actions={
-          <>
-            <Button size="small" ghost onClick={handleTest} loading={testing}>测试连接</Button>
-            <Button type="primary" size="small" onClick={handleSave} loading={saving} style={{ background: '#1a1a1a' }}>保存配置</Button>
-          </>
+          <Button type="primary" size="small" onClick={handleSave} loading={saving} style={{ background: '#1a1a1a' }}>保存配置</Button>
         }
       />
       <div style={{ flex: 1, padding: 16, overflowY: 'auto' }}>
@@ -142,6 +139,22 @@ const Settings: React.FC = () => {
           </div>
         </div>
 
+        {/* 测试连接按钮 + 结果 */}
+        <div style={{ marginBottom: 14 }}>
+          <Button onClick={handleTest} loading={testing} style={{ fontSize: 12 }}>
+            测试连接
+          </Button>
+          {testResult && (
+            <span style={{
+              marginLeft: 12, fontSize: 11,
+              color: testResult.success ? '#16a34a' : '#e54d4d',
+              fontWeight: 500,
+            }}>
+              {testResult.success ? '✓' : '✗'} {testResult.message}
+            </span>
+          )}
+        </div>
+
         {/* 自动推导预览 */}
         <div style={cardStyle}>
           <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10, color: '#1a1a1a' }}>自动推导参数</div>
@@ -159,32 +172,6 @@ const Settings: React.FC = () => {
               <div style={{ fontSize: 11, color: '#16a34a', fontFamily: 'monospace' }}>LDAPS :636 (SSL)</div>
             </div>
           </div>
-        </div>
-
-        {/* 连接测试 */}
-        <div style={cardStyle}>
-          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10, color: '#1a1a1a' }}>连接测试</div>
-          {testResult ? (
-            testResult.success ? (
-              <>
-                <div style={{ color: '#16a34a', fontWeight: 500, fontSize: 12, marginBottom: 4 }}>
-                  ✓ 连接成功
-                </div>
-                <div style={{ color: '#666', fontSize: 11 }}>{testResult.message}</div>
-              </>
-            ) : (
-              <>
-                <div style={{ color: '#e54d4d', fontWeight: 500, fontSize: 12, marginBottom: 4 }}>
-                  ✗ 连接失败
-                </div>
-                <div style={{ color: '#666', fontSize: 11 }}>{testResult.message}</div>
-              </>
-            )
-          ) : (
-            <div style={{ color: '#999', fontSize: 11 }}>
-              填写配置后点击顶部「测试连接」验证
-            </div>
-          )}
         </div>
       </div>
     </>
