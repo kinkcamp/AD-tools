@@ -61,6 +61,12 @@ const BatchCreate: React.FC = () => {
       fields: r.fields,
       status: r.fields['sAMAccountName'] ? 'pass' as const : 'warn' as const,
     }))
+    // 一列都没匹配上时直接拦截，并告知文件实际检测到的列名，避免展示无法使用的空表
+    if (mapped.length > 0 && !mapped.some(r => r.sAMAccountName)) {
+      const detected = Object.keys(parsedRecords[0]?.fields ?? {})
+      message.error(`找不到 sAMAccountName 列。文件检测到的列：${detected.join('、') || '（无）'}，请使用模板或包含该列的文件`)
+      return
+    }
     setRecords(mapped)
     setResult(null)
     setStep(1)

@@ -3,6 +3,27 @@ import { message } from 'antd'
 import Papa from 'papaparse'
 import * as XLSX from 'xlsx'
 import type { ParsedRecord } from '../types'
+import { TEMPLATE_HEADERS } from '../utils/template'
+
+// 列名容错：忽略大小写与 BOM，自动归一到模板标准列名（如 samaccountname → sAMAccountName）；
+// 同时支持常见中文表头（如 姓名 → displayName），方便直接上传自制名单
+const canonicalByKey = new Map(TEMPLATE_HEADERS.map((h) => [h.toLowerCase(), h]))
+const ALIAS_MAP: Record<string, string> = {
+  '用户名': 'sAMAccountName', '账号': 'sAMAccountName', '帐号': 'sAMAccountName', '登录名': 'sAMAccountName',
+  'username': 'sAMAccountName', 'account': 'sAMAccountName', 'login': 'sAMAccountName',
+  '姓名': 'displayName', '显示名': 'displayName', '名称': 'displayName', 'name': 'displayName',
+  '组织单元': 'ou', '密码': 'password', '初始密码': 'password',
+  '邮箱': 'mail', '电子邮件': 'mail', 'email': 'mail',
+  '部门': 'department', 'dept': 'department',
+  '职位': 'title', '职务': 'title',
+  '电话': 'telephoneNumber', '手机': 'telephoneNumber', 'phone': 'telephoneNumber', 'mobile': 'telephoneNumber',
+  '描述': 'description', '备注': 'description',
+  '名': 'givenName', '姓': 'sn',
+}
+const normalizeKey = (k: string): string => {
+  const clean = k.replace(/^\uFEFF/, '').trim()
+  return canonicalByKey.get(clean.toLowerCase()) ?? ALIAS_MAP[clean.toLowerCase()] ?? clean
+}
 
 interface UploadZoneProps {
   onFileSelect?: (file: File) => void
@@ -44,7 +65,7 @@ const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onFileParsed, acc
           .filter(row => Object.values(row).some(v => v && v.trim() !== ''))
           .map(row => {
             const fields: Record<string, string> = {}
-            Object.entries(row).forEach(([k, v]) => { fields[k] = (v ?? '').trim() })
+            Object.entries(row).forEach(([k, v]) => { fields[normalizeKey(k)] = (v ?? '').trim() })
             return { fields }
           })
       } else if (file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls')) {
@@ -57,7 +78,7 @@ const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onFileParsed, acc
           .filter(row => Object.values(row).some(v => String(v).trim() !== ''))
           .map(row => {
             const fields: Record<string, string> = {}
-            Object.entries(row).forEach(([k, v]) => { fields[String(k).trim()] = String(v).trim() })
+            Object.entries(row).forEach(([k, v]) => { fields[normalizeKey(String(k))] = String(v).trim() })
             return { fields }
           })
       } else {
