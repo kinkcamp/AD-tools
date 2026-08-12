@@ -1,9 +1,10 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Table, Button } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import TopBar from '../components/TopBar'
 import SearchBar from '../components/SearchBar'
 import StatsRow from '../components/StatsRow'
+import ChangePasswordModal from './modals/ChangePasswordModal'
 
 interface UserRecord {
   key: string
@@ -76,7 +77,10 @@ const columns: ColumnsType<UserRecord> = [
   },
 ]
 
-const UserSearch: React.FC = () => (
+const UserSearch: React.FC = () => {
+  const [passwordModal, setPasswordModal] = useState<{ open: boolean; user: UserRecord | null }>({ open: false, user: null })
+
+  return (
   <>
     <TopBar
       title="搜索用户"
@@ -100,6 +104,7 @@ const UserSearch: React.FC = () => (
         dataSource={mockData}
         size="small"
         rowSelection={{ type: 'checkbox' }}
+        onRow={(record) => ({ onDoubleClick: () => setPasswordModal({ open: true, user: record }) })}
         pagination={{
           pageSize: 5,
           showTotal: (total, range) => `显示 ${range[0]}-${range[1]} / 共 ${total} 条`,
@@ -108,7 +113,20 @@ const UserSearch: React.FC = () => (
         style={{ fontSize: 12 }}
       />
     </div>
+    {passwordModal.user && (
+      <ChangePasswordModal
+        open={passwordModal.open}
+        username={passwordModal.user.sAMAccountName}
+        displayName={passwordModal.user.displayName}
+        onClose={() => setPasswordModal({ open: false, user: null })}
+        onConfirm={(pwd, force) => {
+          console.log('change password', passwordModal.user?.sAMAccountName, pwd, force)
+          setPasswordModal({ open: false, user: null })
+        }}
+      />
+    )}
   </>
-)
+  )
+}
 
 export default UserSearch
