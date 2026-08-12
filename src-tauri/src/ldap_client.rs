@@ -339,10 +339,10 @@ impl LdapClient {
             .unwrap_or_else(|| format!("{}@{}", spec.s_am_account_name, config.domain));
 
         let mut attrs: Vec<(String, HashSet<String>)> = vec![
+            // AD 创建必须显式携带 objectClass，否则报 rc=65 objectClassViolation
+            ("objectClass".to_string(), HashSet::from(["user".to_string()])),
             ("sAMAccountName".to_string(), HashSet::from([spec.s_am_account_name.clone()])),
             ("userPrincipalName".to_string(), HashSet::from([upn])),
-            // 512 = NORMAL_ACCOUNT（创建时必须携带，随后通过改密流程激活）
-            ("userAccountControl".to_string(), HashSet::from(["512".to_string()])),
         ];
         if !spec.display_name.trim().is_empty() {
             attrs.push(("displayName".to_string(), HashSet::from([spec.display_name.clone()])));
@@ -352,8 +352,9 @@ impl LdapClient {
             let v = v.trim();
             if v.is_empty() { continue; }
             match k.as_str() {
-                // 已单独处理的属性跳过，避免重复值导致 add 失败
-                "userPrincipalName" | "sAMAccountName" | "displayName" | "ou" | "password" => continue,
+                // 已单独处理的属性跳过，避免重复值导致 add 失败；
+                // userAccountControl 不能在 add 时设置（rc=53），改密后再启用
+                "userPrincipalName" | "sAMAccountName" | "displayName" | "ou" | "password" | "objectClass" | "userAccountControl" => continue,
                 _ => attrs.push((k.clone(), HashSet::from([v.to_string()]))),
             }
         }
@@ -368,10 +369,20 @@ impl LdapClient {
             .success()
             .map_err(|e| format!("创建用户条目失败: {}", e))?;
 
-        // 设密失败（如无证书时 AD 拒绝明文通道改 unicodePwd）不算创建失败：
-        // 用户条目已存在，标记为已创建、待设密，用户可用批量改密补救
+        // AD 标准三步流程：add（默认禁用）→ 设密 → 改 UAC=512 启用。
+        // 设密失败（如无加密通道时 AD 拒绝改 unicodePwd）不启用账户，
+        // 标记为已创建、待设密，用户可用批量改密补救
         match Self::change_password_impl(ldap, &dn, &spec.password, false).await {
-            Ok(()) => Ok(true),
+            Ok(()) => {
+                let mut vals: HashSet<Vec<u8>> = HashSet::new();
+                vals.insert(b"512".to_vec());
+                ldap.modify(&dn, vec![ldap3::Mod::Replace(b"userAccountControl".to_vec(), vals)])
+                    .await
+                    .map_err(|e| format!("启用账户失败: {}", e))?
+                    .success()
+                    .map_err(|e| format!("启用账户失败: {}", e))?;
+                Ok(true)
+            }
             Err(_) => Ok(false),
         }
     }
