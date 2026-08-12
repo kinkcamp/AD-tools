@@ -184,7 +184,7 @@ const BatchCreate: React.FC = () => {
           const ok = record.live === 'success'
           const skipped = record.resultMsg.includes('已跳过')
           return (
-            <span style={{ color: ok ? '#16a34a' : skipped ? '#d97706' : '#dc2626', fontSize: 11, fontWeight: 500 }}>
+            <span title={record.resultMsg} style={{ color: ok ? '#16a34a' : skipped ? '#d97706' : '#dc2626', fontSize: 11, fontWeight: 500, cursor: 'help' }}>
               {record.resultMsg.length > 24 ? record.resultMsg.slice(0, 24) + '…' : record.resultMsg}
             </span>
           )

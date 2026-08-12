@@ -476,6 +476,23 @@ impl LdapClient {
                 bad_parents.insert(parent.clone());
             }
         }
+        // 存在无效 OU 时，列出域内实际可用容器供用户对照（避免再次猜错格式）
+        let mut container_hint = String::new();
+        if !bad_parents.is_empty() {
+            if let Ok(mut stream) = ldap.streaming_search_with(
+                EntriesOnly::new(), &self.config.base_dn(), Scope::OneLevel,
+                "(|(objectClass=organizationalUnit)(objectClass=container))", vec!["distinguishedName"],
+            ).await {
+                let mut names: Vec<String> = Vec::new();
+                while let Ok(Some(entry)) = stream.next().await {
+                    names.push(SearchEntry::construct(entry).dn);
+                }
+                let _ = stream.finish().await;
+                if !names.is_empty() {
+                    container_hint = format!("。域内可用容器: {}", names.join(" / "));
+                }
+            }
+        }
 
         // 阶段2 逐个创建，每完成一个实时推送进度
         for (i, spec) in users.iter().enumerate() {
@@ -491,7 +508,7 @@ impl LdapClient {
                 BatchResultItem {
                     username: spec.s_am_account_name.clone(),
                     success: false,
-                    message: format!("目标 OU 在域中不存在（{}），已跳过，请修改 ou 列或默认 OU", parent),
+                    message: format!("目标 OU 在域中不存在或格式无效（{}），已跳过，请修改 ou 列或默认 OU{}", parent, container_hint),
                 }
             } else if existing.contains(&name_lc) {
                 BatchResultItem {
