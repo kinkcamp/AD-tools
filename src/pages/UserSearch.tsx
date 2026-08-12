@@ -1,28 +1,12 @@
 import React, { useState } from 'react'
-import { Table, Button } from 'antd'
+import { Table, Button, message, Popconfirm } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import TopBar from '../components/TopBar'
 import SearchBar from '../components/SearchBar'
 import StatsRow from '../components/StatsRow'
 import ChangePasswordModal from './modals/ChangePasswordModal'
-
-interface UserRecord {
-  key: string
-  sAMAccountName: string
-  displayName: string
-  mail: string
-  department: string
-  status: 'active' | 'disabled' | 'locked'
-  lastLogin: string
-}
-
-const mockData: UserRecord[] = [
-  { key: '1', sAMAccountName: 'zhangsan', displayName: '张三', mail: 'zhangsan@company.com', department: '技术部', status: 'active', lastLogin: '2026-08-10 09:15' },
-  { key: '2', sAMAccountName: 'zhangwei', displayName: '张伟', mail: 'zhangwei@company.com', department: '销售部', status: 'active', lastLogin: '2026-08-09 14:22' },
-  { key: '3', sAMAccountName: 'zhangli', displayName: '张丽', mail: 'zhangli@company.com', department: '人事部', status: 'disabled', lastLogin: '2026-07-15 10:30' },
-  { key: '4', sAMAccountName: 'zhangming', displayName: '张明', mail: 'zhangming@company.com', department: '财务部', status: 'active', lastLogin: '2026-08-11 08:45' },
-  { key: '5', sAMAccountName: 'zhanghua', displayName: '张华', mail: 'zhanghua@company.com', department: '技术部', status: 'locked', lastLogin: '2026-08-08 16:50' },
-]
+import { tauriService } from '../services/tauri'
+import type { ADUser } from '../types'
 
 const statusMap = {
   active: { label: '活跃', bg: '#f0fdf4', color: '#16a34a' },
@@ -30,7 +14,7 @@ const statusMap = {
   locked: { label: '已锁定', bg: '#fffbeb', color: '#d97706' },
 }
 
-const columns: ColumnsType<UserRecord> = [
+const columns: ColumnsType<ADUser> = [
   {
     title: '用户名',
     dataIndex: 'sAMAccountName',
@@ -56,7 +40,7 @@ const columns: ColumnsType<UserRecord> = [
     title: '状态',
     dataIndex: 'status',
     key: 'status',
-    render: (status: 'active' | 'disabled' | 'locked') => {
+    render: (status: ADUser['status']) => {
       const s = statusMap[status]
       return (
         <span style={{
@@ -78,7 +62,47 @@ const columns: ColumnsType<UserRecord> = [
 ]
 
 const UserSearch: React.FC = () => {
-  const [passwordModal, setPasswordModal] = useState<{ open: boolean; user: UserRecord | null }>({ open: false, user: null })
+  const [users, setUsers] = useState<ADUser[]>([])
+  const [loading, setLoading] = useState(false)
+  const [passwordModal, setPasswordModal] = useState<{ open: boolean; user: ADUser | null }>({ open: false, user: null })
+
+  const handleSearch = async (keyword: string, ouFilter: string) => {
+    setLoading(true)
+    try {
+      const config = await tauriService.getConfig()
+      const result = await tauriService.searchUsers(config, keyword, ouFilter)
+      setUsers(result)
+    } catch (err) {
+      message.error(`搜索失败: ${err}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleChangePassword = async (userDn: string, newPassword: string, forceChange: boolean) => {
+    try {
+      const config = await tauriService.getConfig()
+      await tauriService.changePassword(config, userDn, newPassword, forceChange)
+      message.success('密码修改成功')
+    } catch (err) {
+      message.error(`修改失败: ${err}`)
+    }
+  }
+
+  const handleDelete = async (userDn: string) => {
+    try {
+      const config = await tauriService.getConfig()
+      await tauriService.deleteUser(config, userDn)
+      message.success('用户已删除')
+      setUsers(prev => prev.filter(u => u.dn !== userDn))
+    } catch (err) {
+      message.error(`删除失败: ${err}`)
+    }
+  }
+
+  const activeCount = users.filter(u => u.status === 'active').length
+  const disabledCount = users.filter(u => u.status === 'disabled').length
+  const lockedCount = users.filter(u => u.status === 'locked').length
 
   return (
   <>
@@ -91,25 +115,34 @@ const UserSearch: React.FC = () => {
         </>
       }
     />
-    <SearchBar />
+    <SearchBar onSearch={handleSearch} />
     <div style={{ flex: 1, padding: 16, overflowY: 'auto' }}>
       <StatsRow items={[
-        { label: '搜索结果', value: 128 },
-        { label: '活跃', value: 120 },
-        { label: '已禁用', value: 5 },
-        { label: '已锁定', value: 3 },
+        { label: '搜索结果', value: users.length },
+        { label: '活跃', value: activeCount },
+        { label: '已禁用', value: disabledCount },
+        { label: '已锁定', value: lockedCount },
       ]} />
       <Table
-        columns={columns}
-        dataSource={mockData}
+        columns={[...columns, {
+          title: '操作', key: 'action', width: 80,
+          render: (_: unknown, record: ADUser) => (
+            <Popconfirm title="确认删除?" onConfirm={() => handleDelete(record.dn)} okText="删除" cancelText="取消">
+              <Button size="small" danger type="link" style={{ fontSize: 11, padding: 0 }}>删除</Button>
+            </Popconfirm>
+          ),
+        }]}
+        dataSource={users}
+        loading={loading}
         size="small"
         rowSelection={{ type: 'checkbox' }}
         onRow={(record) => ({ onDoubleClick: () => setPasswordModal({ open: true, user: record }) })}
-        pagination={{
-          pageSize: 5,
+        locale={{ emptyText: '输入关键词搜索用户' }}
+        pagination={users.length > 0 ? {
+          pageSize: 10,
           showTotal: (total, range) => `显示 ${range[0]}-${range[1]} / 共 ${total} 条`,
           size: 'small',
-        }}
+        } : false}
         style={{ fontSize: 12 }}
       />
     </div>
@@ -120,7 +153,7 @@ const UserSearch: React.FC = () => {
         displayName={passwordModal.user.displayName}
         onClose={() => setPasswordModal({ open: false, user: null })}
         onConfirm={(pwd, force) => {
-          console.log('change password', passwordModal.user?.sAMAccountName, pwd, force)
+          handleChangePassword(passwordModal.user!.dn, pwd, force)
           setPasswordModal({ open: false, user: null })
         }}
       />

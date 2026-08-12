@@ -1,7 +1,9 @@
-import React, { useState } from 'react'
-import { Input, Select, Switch, Button } from 'antd'
+import React, { useState, useEffect } from 'react'
+import { Input, Select, Switch, Button, message } from 'antd'
 import TopBar from '../components/TopBar'
 import SearchBar from '../components/SearchBar'
+import { tauriService } from '../services/tauri'
+import type { AppConfig } from '../types'
 
 const cardStyle: React.CSSProperties = {
   border: '1px solid #eee',
@@ -24,10 +26,61 @@ const labelStyle: React.CSSProperties = {
   fontWeight: 500,
 }
 
+const defaultConfig: AppConfig = {
+  ldapHost: '',
+  ldapPort: 636,
+  baseDN: '',
+  bindDN: '',
+  bindPassword: '',
+  sslEnabled: true,
+  startTls: false,
+  verifyCert: true,
+  caCertPath: '',
+  ldapVersion: 'v3',
+}
+
 const Settings: React.FC = () => {
-  const [sslEnabled, setSslEnabled] = useState(true)
-  const [startTls, setStartTls] = useState(false)
-  const [verifyCert, setVerifyCert] = useState(true)
+  const [config, setConfig] = useState<AppConfig>(defaultConfig)
+  const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
+
+  useEffect(() => {
+    tauriService.getConfig().then(cfg => {
+      if (cfg.ldapHost) setConfig(cfg)
+    }).catch(() => {})
+  }, [])
+
+  const update = (field: keyof AppConfig, value: string | number | boolean) => {
+    setConfig(prev => ({ ...prev, [field]: value }))
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await tauriService.saveConfig(config)
+      message.success('配置已保存')
+    } catch (err) {
+      message.error(`保存失败: ${err}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleTest = async () => {
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const result = await tauriService.testConnection(config)
+      setTestResult({ success: true, message: result })
+      message.success('连接测试成功')
+    } catch (err) {
+      setTestResult({ success: false, message: String(err) })
+      message.error(`连接测试失败: ${err}`)
+    } finally {
+      setTesting(false)
+    }
+  }
 
   return (
     <>
@@ -35,8 +88,8 @@ const Settings: React.FC = () => {
         title="连接设置"
         actions={
           <>
-            <Button size="small" ghost>测试连接</Button>
-            <Button type="primary" size="small">保存配置</Button>
+            <Button size="small" ghost onClick={handleTest} loading={testing}>测试连接</Button>
+            <Button type="primary" size="small" onClick={handleSave} loading={saving} style={{ background: '#1a1a1a' }}>保存配置</Button>
           </>
         }
       />
@@ -48,21 +101,36 @@ const Settings: React.FC = () => {
           <div style={{ display: 'flex', gap: 14, marginBottom: 14 }}>
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>域控制器地址</label>
-              <Input defaultValue="ldap://dc01.company.com" style={{ fontSize: 12, background: '#f5f5f5' }} />
+              <Input
+                value={config.ldapHost}
+                onChange={(e) => update('ldapHost', e.target.value)}
+                placeholder="ldap://dc01.company.com"
+                style={{ fontSize: 12, background: '#f5f5f5' }}
+              />
             </div>
             <div style={{ width: 100 }}>
               <label style={labelStyle}>端口</label>
-              <Input defaultValue="636" style={{ fontSize: 12, background: '#f5f5f5' }} />
+              <Input
+                type="number"
+                value={config.ldapPort}
+                onChange={(e) => update('ldapPort', Number(e.target.value))}
+                style={{ fontSize: 12, background: '#f5f5f5' }}
+              />
             </div>
           </div>
           <div style={{ display: 'flex', gap: 14 }}>
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>Base DN</label>
-              <Input defaultValue="DC=company,DC=com" style={{ fontSize: 12, background: '#f5f5f5' }} />
+              <Input
+                value={config.baseDN}
+                onChange={(e) => update('baseDN', e.target.value)}
+                placeholder="DC=company,DC=com"
+                style={{ fontSize: 12, background: '#f5f5f5' }}
+              />
             </div>
             <div style={{ width: 140 }}>
               <label style={labelStyle}>协议版本</label>
-              <Select defaultValue="v3" style={{ width: '100%', fontSize: 12 }}>
+              <Select value={config.ldapVersion} onChange={(v) => update('ldapVersion', v)} style={{ width: '100%', fontSize: 12 }}>
                 <Select.Option value="v3">LDAP v3</Select.Option>
                 <Select.Option value="v2">LDAP v2</Select.Option>
               </Select>
@@ -75,16 +143,21 @@ const Settings: React.FC = () => {
           <div style={cardTitleStyle}>身份验证</div>
           <div style={{ marginBottom: 14 }}>
             <label style={labelStyle}>绑定 DN</label>
-            <Input defaultValue="CN=admin,OU=Admins,DC=company,DC=com" style={{ fontSize: 12, background: '#f5f5f5' }} />
+            <Input
+              value={config.bindDN}
+              onChange={(e) => update('bindDN', e.target.value)}
+              placeholder="CN=admin,OU=Admins,DC=company,DC=com"
+              style={{ fontSize: 12, background: '#f5f5f5' }}
+            />
           </div>
           <div style={{ display: 'flex', gap: 14 }}>
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>密码</label>
-              <Input.Password style={{ fontSize: 12, background: '#f5f5f5' }} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <label style={labelStyle}>确认密码</label>
-              <Input.Password style={{ fontSize: 12, background: '#f5f5f5' }} />
+              <Input.Password
+                value={config.bindPassword}
+                onChange={(e) => update('bindPassword', e.target.value)}
+                style={{ fontSize: 12, background: '#f5f5f5' }}
+              />
             </div>
           </div>
         </div>
@@ -97,41 +170,61 @@ const Settings: React.FC = () => {
               <div style={{ fontSize: 12, fontWeight: 500 }}>启用 SSL 安全连接</div>
               <div style={{ fontSize: 10, color: '#999', marginTop: 2 }}>使用 LDAPS (端口 636) 加密通信</div>
             </div>
-            <Switch checked={sslEnabled} onChange={setSslEnabled} size="small" />
+            <Switch checked={config.sslEnabled} onChange={(v) => update('sslEnabled', v)} size="small" />
           </div>
           <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
               <div style={{ fontSize: 12, fontWeight: 500 }}>STARTTLS</div>
               <div style={{ fontSize: 10, color: '#999', marginTop: 2 }}>在普通连接上升级到 TLS</div>
             </div>
-            <Switch checked={startTls} onChange={setStartTls} size="small" />
+            <Switch checked={config.startTls} onChange={(v) => update('startTls', v)} size="small" />
           </div>
           <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
               <div style={{ fontSize: 12, fontWeight: 500 }}>验证服务器证书</div>
               <div style={{ fontSize: 10, color: '#999', marginTop: 2 }}>校验 CA 证书是否有效</div>
             </div>
-            <Switch checked={verifyCert} onChange={setVerifyCert} size="small" />
+            <Switch checked={config.verifyCert} onChange={(v) => update('verifyCert', v)} size="small" />
           </div>
           <div>
             <label style={labelStyle}>CA 证书路径</label>
-            <Input defaultValue="/etc/ssl/certs/ca-cert.pem" style={{ fontSize: 12, background: '#f5f5f5' }} />
+            <Input
+              value={config.caCertPath}
+              onChange={(e) => update('caCertPath', e.target.value)}
+              placeholder="/etc/ssl/certs/ca-cert.pem"
+              style={{ fontSize: 12, background: '#f5f5f5' }}
+            />
           </div>
         </div>
 
         {/* 连接测试 */}
         <div style={cardStyle}>
           <div style={cardTitleStyle}>连接测试</div>
-          <div style={{ color: '#16a34a', fontWeight: 500, fontSize: 12, marginBottom: 4 }}>
-            ✓ 连接成功
-          </div>
-          <div style={{ color: '#999', fontSize: 10, marginBottom: 8 }}>
-            12ms · dc01.company.com · LDAP v3 + SSL
-          </div>
-          <div style={{ fontSize: 11, color: '#666' }}>
-            <div>域功能级别: Windows Server 2016</div>
-            <div>域名称: company.com</div>
-          </div>
+          {testResult ? (
+            testResult.success ? (
+              <>
+                <div style={{ color: '#16a34a', fontWeight: 500, fontSize: 12, marginBottom: 4 }}>
+                  ✓ 连接成功
+                </div>
+                <div style={{ color: '#666', fontSize: 11 }}>
+                  {testResult.message}
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ color: '#e54d4d', fontWeight: 500, fontSize: 12, marginBottom: 4 }}>
+                  ✗ 连接失败
+                </div>
+                <div style={{ color: '#666', fontSize: 11 }}>
+                  {testResult.message}
+                </div>
+              </>
+            )
+          ) : (
+            <div style={{ color: '#999', fontSize: 11 }}>
+              配置完成后点击顶部「测试连接」按钮验证
+            </div>
+          )}
         </div>
       </div>
     </>
