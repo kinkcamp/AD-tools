@@ -6,7 +6,7 @@ use std::time::Duration;
 use crate::config::AppConfig;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-const SEARCH_SIZE_LIMIT: usize = 2000;
+const SEARCH_SIZE_LIMIT: usize = 5000;
 
 /// Escape a value for safe interpolation into an LDAP search filter (RFC 4515)
 fn ldap_escape(input: &str) -> String {
@@ -232,10 +232,11 @@ impl LdapClient {
         Ok(users)
     }
 
-    /// 列出 Users 容器下的用户（排除系统内置账户），用于搜索页默认展示
+    /// 列出全域用户（所有 OU/容器，排除系统内置账户），用于搜索页默认展示
     pub async fn list_users(&self) -> Result<Vec<ADUser>, String> {
         let (mut ldap, _) = self.connect().await?;
-        let base = format!("CN=Users,{}", self.config.base_dn());
+        // 从域根全量扫描，覆盖所有 OU/容器（早期只查 CN=Users，导入到其他 OU 的用户读不到）
+        let base = self.config.base_dn();
         let filter = "(&(objectClass=user)(objectCategory=person))";
 
         let mut stream = ldap.streaming_search_with(EntriesOnly::new(), &base, Scope::Subtree, filter, Self::USER_ATTRS.to_vec())
