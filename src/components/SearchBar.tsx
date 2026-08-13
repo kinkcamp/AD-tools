@@ -9,7 +9,7 @@ const SearchBar: React.FC<SearchBarProps> = ({ onSearch }) => {
   const [keyword, setKeyword] = useState('')
 
   return (
-    <div style={{ padding: '12px 20px', borderBottom: '1px solid #eee' }}>
+    <div style={{ padding: '12px 18px', borderBottom: '1px solid #eee' }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <Input
           placeholder="搜索用户名、姓名、邮箱、部门..."

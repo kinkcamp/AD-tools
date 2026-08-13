@@ -336,7 +336,7 @@ const BatchCreate: React.FC = () => {
               columns={columns}
               dataSource={records}
               size="small"
-              pagination={records.length > 20 ? { pageSize: 20, size: 'small' } : false}
+              pagination={records.length > 20 ? { defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], size: 'small' } : false}
               style={{ fontSize: 12 }}
               onRow={(r) => r.live === 'creating'
                 ? { style: { animation: 'rowPulse 1.2s ease-in-out infinite' } }

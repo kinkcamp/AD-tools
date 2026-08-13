@@ -315,7 +315,9 @@ const UserSearch: React.FC = () => {
         })}
         locale={{ emptyText: loading ? '加载中...' : '暂无用户，可输入关键词搜索' }}
         pagination={users.length > 0 ? {
-          pageSize: 10,
+          defaultPageSize: 10,
+          showSizeChanger: true,
+          pageSizeOptions: [10, 20, 50, 100],
           showTotal: (total, range) => `显示 ${range[0]}-${range[1]} / 共 ${total} 条`,
           size: 'small',
         } : false}

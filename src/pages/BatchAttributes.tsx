@@ -247,7 +247,7 @@ const BatchAttributes: React.FC = () => {
               columns={columns}
               dataSource={records}
               size="small"
-              pagination={records.length > 20 ? { pageSize: 20, size: 'small' } : false}
+              pagination={records.length > 20 ? { defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], size: 'small' } : false}
               style={{ fontSize: 12 }}
             />
           </>

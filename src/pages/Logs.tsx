@@ -87,7 +87,9 @@ const Logs: React.FC = () => {
           size="small"
           locale={{ emptyText: '暂无操作日志' }}
           pagination={logs.length > 0 ? {
-            pageSize: 10,
+            defaultPageSize: 10,
+            showSizeChanger: true,
+            pageSizeOptions: [10, 20, 50, 100],
             showTotal: (total, range) => `显示 ${range[0]}-${range[1]} / 共 ${total} 条`,
             size: 'small',
           } : false}
