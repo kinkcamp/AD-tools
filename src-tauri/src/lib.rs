@@ -25,12 +25,12 @@ async fn test_connection(cfg: AppConfig) -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn search_users(cfg: AppConfig, keyword: String, ou_filter: String) -> Result<Vec<ldap_client::ADUser>, String> {
+async fn search_users(cfg: AppConfig, keyword: String) -> Result<Vec<ldap_client::ADUser>, String> {
     if keyword.trim().is_empty() {
         return Err("请输入搜索关键词".to_string());
     }
     let client = LdapClient::new(cfg);
-    client.search_users(&keyword, &ou_filter).await
+    client.search_users(&keyword).await
 }
 
 #[tauri::command]

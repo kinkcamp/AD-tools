@@ -113,7 +113,7 @@ const UserSearch: React.FC = () => {
     return () => { cancelled = true }
   }, [])
 
-  const handleSearch = async (keyword: string, ouFilter: string) => {
+  const handleSearch = async (keyword: string) => {
     if (!keyword.trim()) {
       message.warning('请输入搜索关键词')
       return
@@ -125,7 +125,7 @@ const UserSearch: React.FC = () => {
         message.error('请先在连接设置中配置 AD 服务器')
         return
       }
-      const result = await tauriService.searchUsers(config, keyword, ouFilter)
+      const result = await tauriService.searchUsers(config, keyword)
       setUsers(result)
       setSelectedKeys([])
       if (result.length === 0) message.info('未找到匹配的用户')

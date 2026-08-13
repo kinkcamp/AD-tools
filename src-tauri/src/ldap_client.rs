@@ -205,7 +205,7 @@ impl LdapClient {
 
     const USER_ATTRS: [&'static str; 7] = ["sAMAccountName", "displayName", "mail", "department", "userAccountControl", "uidNumber", "gidNumber"];
 
-    pub async fn search_users(&self, keyword: &str, _ou_filter: &str) -> Result<Vec<ADUser>, String> {
+    pub async fn search_users(&self, keyword: &str) -> Result<Vec<ADUser>, String> {
         let (mut ldap, _) = self.connect().await?;
         let base_dn = self.config.base_dn();
 

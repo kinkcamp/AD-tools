@@ -13,8 +13,8 @@ export const tauriService = {
   getUserAttributes: (cfg: AppConfig) => invoke<string[]>('get_user_attributes', { cfg }),
 
   // Users
-  searchUsers: (cfg: AppConfig, keyword: string, ouFilter: string) =>
-    invoke<ADUser[]>('search_users', { cfg, keyword, ouFilter }),
+  searchUsers: (cfg: AppConfig, keyword: string) =>
+    invoke<ADUser[]>('search_users', { cfg, keyword }),
   listUsers: (cfg: AppConfig) => invoke<ADUser[]>('list_users', { cfg }),
   changePassword: (cfg: AppConfig, userDn: string, newPassword: string, forceChange: boolean) =>
     invoke<void>('change_password', { cfg, userDn, newPassword, forceChange }),
