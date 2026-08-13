@@ -275,7 +275,7 @@ const BatchCreate: React.FC = () => {
                   <Input
                     value={defaultOu}
                     onChange={(e) => setDefaultOu(e.target.value)}
-                    placeholder="OU=Users,DC=company,DC=com（行内未指定时使用）"
+                    placeholder="OU 名称或完整 DN（行内未指定时使用）"
                     style={{ width: 300 }}
                     size="small"
                   />

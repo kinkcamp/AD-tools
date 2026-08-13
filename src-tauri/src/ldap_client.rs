@@ -334,6 +334,38 @@ impl LdapClient {
         Ok(())
     }
 
+    /// 把模板里的 OU 值解析为完整 DN：
+    /// - 含逗号的视为完整 DN，直接做存在性校验（大小写不敏感匹配）
+    /// - 纯名称（EDA）或 OU=/CN= 前缀的简写，在域内搜索同名 OU/容器，
+    ///   唯一命中则自动拼成完整 DN；多个同名时要求用户写完整 DN
+    async fn resolve_ou_dn(ldap: &mut ldap3::Ldap, base_dn: &str, raw: &str) -> Result<String, String> {
+        let ou = raw.trim();
+        if ou.contains(',') {
+            let res = ldap.search(ou, Scope::Base, "(objectClass=*)", vec!["distinguishedName"]).await
+                .map_err(|e| e.to_string())?;
+            let (entries, _) = res.success().map_err(|e| e.to_string())?;
+            return entries.first()
+                .map(|e| SearchEntry::construct(e.clone()).dn)
+                .ok_or_else(|| format!("OU 不存在: {}", ou));
+        }
+        // 简写：去掉可选的 OU=/CN= 前缀后按名称搜索
+        let name = if ou.to_ascii_lowercase().starts_with("ou=") || ou.to_ascii_lowercase().starts_with("cn=") {
+            &ou[3..]
+        } else {
+            ou
+        };
+        let esc = name.replace('\\', "\\5c").replace('*', "\\2a").replace('(', "\\28").replace(')', "\\29");
+        let filter = format!("(&(|(objectClass=organizationalUnit)(objectClass=container))(name={}))", esc);
+        let res = ldap.search(base_dn, Scope::Subtree, &filter, vec!["distinguishedName"]).await
+            .map_err(|e| e.to_string())?;
+        let (entries, _) = res.success().map_err(|e| e.to_string())?;
+        match entries.len() {
+            0 => Err(format!("域内找不到名为 {} 的 OU/容器", name)),
+            1 => Ok(SearchEntry::construct(entries.into_iter().next().unwrap()).dn),
+            n => Err(format!("域内有 {} 个同名容器（{}），请在模板中填写完整 DN", n, name)),
+        }
+    }
+
     /// 创建用户：add 条目 → 设置密码激活。返回 Ok((密码是否设置成功, 同名改名后的显示名))。
     /// 条目已创建但设密失败时返回 Ok(false, _)，避免上层误判为未创建而重复提交
     async fn create_user_impl(ldap: &mut ldap3::Ldap, config: &AppConfig, spec: &NewUserSpec) -> Result<(bool, Option<String>), String> {
@@ -433,7 +465,7 @@ impl LdapClient {
         }
     }
 
-    pub async fn batch_create_users<F>(&self, users: Vec<NewUserSpec>, emit: F) -> Result<BatchResult, String>
+    pub async fn batch_create_users<F>(&self, mut users: Vec<NewUserSpec>, emit: F) -> Result<BatchResult, String>
     where
         F: Fn(CreateProgressEvent),
     {
@@ -475,25 +507,27 @@ impl LdapClient {
         let mut seen_in_file: HashMap<String, bool> = HashMap::new();
         let mut details = Vec::with_capacity(total);
 
-        // 阶段1.5 目标 OU 存在性预检查：OU 不存在时 AD 会报难懂的 rc=10 referral/rc=32，
-        // 提前拦截并给出明确提示（模板示例中的 company.com 占位 OU 是常见踩坑点）
-        let mut bad_parents: HashSet<String> = HashSet::new();
-        let parents: HashSet<String> = users.iter()
-            .map(|u| if u.ou.trim().is_empty() { self.config.base_dn() } else { u.ou.trim().to_string() })
+        // 阶段1.5 OU 解析与存在性预检查：支持简写（EDA / OU=EDA）自动解析为完整 DN，
+        // 不存在时 AD 会报难懂的 rc=10 referral/rc=32，提前拦截并给出明确提示
+        let base_dn = self.config.base_dn();
+        let raw_parents: HashSet<String> = users.iter()
+            .map(|u| if u.ou.trim().is_empty() { base_dn.clone() } else { u.ou.trim().to_string() })
             .collect();
-        for parent in &parents {
-            let exists = match ldap.search(parent, Scope::Base, "(objectClass=*)", vec!["distinguishedName"]).await {
-                Ok(res) => match res.success() {
-                    Ok((entries, _)) => !entries.is_empty(),
-                    Err(_) => false,
-                },
-                Err(_) => false,
-            };
-            if !exists {
-                bad_parents.insert(parent.clone());
+        let mut ou_resolved: HashMap<String, String> = HashMap::new();
+        let mut bad_parents: HashSet<String> = HashSet::new();
+        for raw in &raw_parents {
+            match Self::resolve_ou_dn(&mut ldap, &base_dn, raw).await {
+                Ok(dn) => { ou_resolved.insert(raw.clone(), dn); }
+                Err(_) => { bad_parents.insert(raw.clone()); }
             }
         }
-        // 存在无效 OU 时，列出域内实际可用容器供用户对照（避免再次猜错格式）
+        // 解析结果回写：后续存在性检查与创建均使用完整 DN
+        for u in users.iter_mut() {
+            let key = if u.ou.trim().is_empty() { base_dn.clone() } else { u.ou.trim().to_string() };
+            if let Some(dn) = ou_resolved.get(&key) {
+                u.ou = dn.clone();
+            }
+        }
         let mut container_hint = String::new();
         if !bad_parents.is_empty() {
             if let Ok(mut stream) = ldap.streaming_search_with(

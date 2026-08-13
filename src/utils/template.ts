@@ -11,7 +11,7 @@ export const TEMPLATE_HEADERS = [
 ]
 
 export const TEMPLATE_EXAMPLE = [
-  // ou 列留空：实际填写时按自己域的 OU 格式（如 OU=员工,DC=sirrr,DC=cn），留空则使用页面上的默认 OU
+  // ou 列留空：可填 OU 名称简写（如 员工）或完整 DN（如 OU=员工,DC=sirrr,DC=cn），程序会自动解析；留空则使用页面上的默认 OU
   'zhangsan', '张三', '', 'Init@2026', 'zhangsan@company.com',
   '技术部', '工程师', '13800138000', '', 'zhangsan@company.com', '三', '张',
 ]
