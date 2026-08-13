@@ -811,4 +811,108 @@ impl LdapClient {
         ldap.unbind().await.ok();
         Ok(())
     }
+
+    /// 启用/禁用账户：读当前 UAC 后置位/清位 ACCOUNTDISABLE(0x2)
+    pub async fn set_account_enabled(&self, user_dn: &str, enable: bool) -> Result<(), String> {
+        let (mut ldap, _) = self.connect().await?;
+
+        let cur = Self::get_attr_value(&mut ldap, user_dn, "userAccountControl").await?;
+        let uac: u32 = cur.parse().map_err(|_| "读取账户控制位失败: 非法的 userAccountControl".to_string())?;
+        let new_uac = if enable { uac & !2 } else { uac | 2 };
+        if new_uac == uac {
+            return Err(if enable { "账户已是启用状态".to_string() } else { "账户已是禁用状态".to_string() });
+        }
+
+        let mut vals: HashSet<Vec<u8>> = HashSet::new();
+        vals.insert(new_uac.to_string().into_bytes());
+        ldap.modify(user_dn, vec![ldap3::Mod::Replace(b"userAccountControl".to_vec(), vals)])
+            .await
+            .map_err(|e| format!("{}账户失败: {}", if enable { "启用" } else { "禁用" }, e))?
+            .success()
+            .map_err(|e| format!("{}账户失败: {}", if enable { "启用" } else { "禁用" }, e))?;
+
+        ldap.unbind().await.ok();
+        Ok(())
+    }
+
+    /// 不允许在属性编辑器中修改的属性（系统/危险属性，大小写不敏感）
+    const EDIT_SKIP_ATTRS: &'static [&'static str] = &[
+        "objectclass", "objectcategory", "objectguid", "objectsid", "instancetype",
+        "name", "cn", "samaccountname", "useraccountcontrol", "unicodepwd", "lmpassword",
+        "whencreated", "whenchanged", "usncreated", "usnchanged", "usnlastobjrem",
+        "dscorepropagationdata", "memberof", "primarygroupid", "lastlogon", "lastlogontimestamp",
+        "lastlogoff", "badpwdcount", "badpasswordtime", "pwdlastset", "accountexpires",
+        "msds-supportedencryptiontypes", "logoncount", "iscriticalsystemobject",
+    ];
+
+    /// 读取用户全部可展示属性（过滤系统/二进制属性），供属性编辑器回显
+    pub async fn get_user_detail(&self, user_dn: &str) -> Result<HashMap<String, String>, String> {
+        let (mut ldap, _) = self.connect().await?;
+        let (rs, _rc) = ldap.search(user_dn, Scope::Base, "(objectClass=*)", vec!["*"])
+            .await
+            .map_err(|e| format!("读取用户属性失败: {}", e))?
+            .success()
+            .map_err(|e| format!("读取用户属性失败: {}", e))?;
+
+        let entry = rs.into_iter().next().ok_or_else(|| "用户不存在".to_string())?;
+        let se = SearchEntry::construct(entry);
+        let mut out: HashMap<String, String> = HashMap::new();
+        for (k, v) in se.attrs {
+            let lk = k.to_ascii_lowercase();
+            if Self::EDIT_SKIP_ATTRS.contains(&lk.as_str()) || lk.starts_with("msds-") {
+                continue;
+            }
+            // 二进制属性经 lossy 转换会出现替换字符，直接跳过
+            let first = match v.first() {
+                Some(s) if !s.contains('\u{FFFD}') => s,
+                _ => continue,
+            };
+            out.insert(k, first.clone());
+        }
+        ldap.unbind().await.ok();
+        Ok(out)
+    }
+
+    /// 修改单个用户属性：值为空 = 删除该属性，非空 = 覆盖写入
+    pub async fn modify_user_attributes(&self, user_dn: &str, attrs: &HashMap<String, String>) -> Result<u32, String> {
+        if attrs.is_empty() {
+            return Err("没有需要修改的属性".to_string());
+        }
+        let (mut ldap, _) = self.connect().await?;
+
+        let mut mods: Vec<ldap3::Mod<Vec<u8>>> = Vec::new();
+        let mut applied = 0u32;
+        for (k, v) in attrs {
+            let lk = k.to_ascii_lowercase();
+            if Self::EDIT_SKIP_ATTRS.contains(&lk.as_str()) || lk.starts_with("msds-") {
+                continue;
+            }
+            let v = v.trim();
+            if v.is_empty() {
+                // 仅当属性当前有值时才删除，否则 AD 报 noSuchAttribute
+                let cur = Self::get_attr_value(&mut ldap, user_dn, k).await.unwrap_or_default();
+                if !cur.is_empty() {
+                    mods.push(ldap3::Mod::Delete(k.as_bytes().to_vec(), HashSet::new()));
+                    applied += 1;
+                }
+            } else {
+                let mut vals: HashSet<Vec<u8>> = HashSet::new();
+                vals.insert(v.as_bytes().to_vec());
+                mods.push(ldap3::Mod::Replace(k.as_bytes().to_vec(), vals));
+                applied += 1;
+            }
+        }
+        if mods.is_empty() {
+            return Err("没有可应用的属性修改（均为系统保护属性）".to_string());
+        }
+
+        ldap.modify(user_dn, mods)
+            .await
+            .map_err(|e| format!("修改属性失败: {}", e))?
+            .success()
+            .map_err(|e| format!("修改属性失败: {}", e))?;
+
+        ldap.unbind().await.ok();
+        Ok(applied)
+    }
 }

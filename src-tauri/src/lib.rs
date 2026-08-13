@@ -133,6 +133,44 @@ async fn batch_modify_attributes(
 }
 
 #[tauri::command]
+async fn set_account_enabled(cfg: AppConfig, user_dn: String, enable: bool) -> Result<(), String> {
+    let operator = cfg.username.clone();
+    let client = LdapClient::new(cfg);
+    let result = client.set_account_enabled(&user_dn, enable).await;
+    operation_log::append(operation_log::LogEntry {
+        time: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+        operation: if enable { "启用账户".to_string() } else { "禁用账户".to_string() },
+        target: user_dn,
+        operator,
+        status: if result.is_ok() { "success".to_string() } else { "failed".to_string() },
+        detail: result.clone().err().unwrap_or_default(),
+    });
+    result
+}
+
+#[tauri::command]
+async fn get_user_detail(cfg: AppConfig, user_dn: String) -> Result<HashMap<String, String>, String> {
+    let client = LdapClient::new(cfg);
+    client.get_user_detail(&user_dn).await
+}
+
+#[tauri::command]
+async fn modify_user_attributes(cfg: AppConfig, user_dn: String, attrs: HashMap<String, String>) -> Result<u32, String> {
+    let operator = cfg.username.clone();
+    let client = LdapClient::new(cfg);
+    let result = client.modify_user_attributes(&user_dn, &attrs).await;
+    operation_log::append(operation_log::LogEntry {
+        time: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+        operation: format!("修改属性({})", attrs.keys().cloned().collect::<Vec<_>>().join(",")),
+        target: user_dn,
+        operator,
+        status: if result.is_ok() { "success".to_string() } else { "failed".to_string() },
+        detail: result.clone().err().unwrap_or_default(),
+    });
+    result
+}
+
+#[tauri::command]
 fn get_operation_logs(limit: usize) -> Vec<operation_log::LogEntry> {
     operation_log::list(if limit == 0 { 500 } else { limit })
 }
@@ -173,6 +211,9 @@ pub fn run() {
             batch_change_passwords,
             batch_add_to_group,
             batch_modify_attributes,
+            set_account_enabled,
+            get_user_detail,
+            modify_user_attributes,
             get_operation_logs,
             parse_file,
             generate_template,

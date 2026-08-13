@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react'
-import { Table, Button, message, Popconfirm, Modal } from 'antd'
+import { Table, Button, message, Popconfirm, Modal, Dropdown } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
+import type { MenuProps } from 'antd'
 import TopBar from '../components/TopBar'
 import SearchBar from '../components/SearchBar'
 import StatsRow from '../components/StatsRow'
 import ChangePasswordModal from './modals/ChangePasswordModal'
+import EditAttributesModal from './modals/EditAttributesModal'
 import { tauriService } from '../services/tauri'
 import type { ADUser } from '../types'
 
@@ -87,6 +89,9 @@ const UserSearch: React.FC = () => {
   const [selectedKeys, setSelectedKeys] = useState<React.Key[]>([])
   const [batchDeleting, setBatchDeleting] = useState(false)
   const [passwordModal, setPasswordModal] = useState<{ open: boolean; user: ADUser | null }>({ open: false, user: null })
+  const [attrsModalUser, setAttrsModalUser] = useState<ADUser | null>(null)
+  // 行右键菜单状态
+  const [ctxMenu, setCtxMenu] = useState<{ open: boolean; x: number; y: number; user: ADUser | null }>({ open: false, x: 0, y: 0, user: null })
 
   // 进入页面自动加载 Users 容器下的用户（系统内置账户已由后端排除）
   useEffect(() => {
@@ -149,6 +154,50 @@ const UserSearch: React.FC = () => {
       setUsers(prev => prev.filter(u => u.dn !== userDn))
     } catch (err) {
       message.error(`删除失败: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  // 启用/禁用账户（右键菜单）
+  const handleToggleEnabled = async (user: ADUser) => {
+    const enable = user.status === 'disabled'
+    try {
+      const config = await tauriService.getConfig()
+      await tauriService.setAccountEnabled(config, user.dn, enable)
+      message.success(enable ? `已启用账户 ${user.sAMAccountName}` : `已禁用账户 ${user.sAMAccountName}`)
+      setUsers(prev => prev.map(u => u.dn === user.dn ? { ...u, status: enable ? 'active' : 'disabled' } : u))
+    } catch (err) {
+      message.error(`${enable ? '启用' : '禁用'}失败: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  // 右键菜单项：根据账户当前状态切换启用/禁用
+  const ctxItems: MenuProps['items'] = ctxMenu.user ? [
+    {
+      key: 'toggle',
+      label: ctxMenu.user.status === 'disabled' ? '启用账户' : '禁用账户',
+    },
+    { key: 'password', label: '修改密码' },
+    { key: 'attrs', label: '编辑属性 / 添加属性' },
+    { type: 'divider' },
+    { key: 'delete', label: '删除用户', danger: true },
+  ] : []
+
+  const handleCtxClick: MenuProps['onClick'] = ({ key }) => {
+    const user = ctxMenu.user
+    setCtxMenu(prev => ({ ...prev, open: false }))
+    if (!user) return
+    if (key === 'toggle') handleToggleEnabled(user)
+    else if (key === 'password') setPasswordModal({ open: true, user })
+    else if (key === 'attrs') setAttrsModalUser(user)
+    else if (key === 'delete') {
+      Modal.confirm({
+        title: `确认删除用户 ${user.sAMAccountName}？`,
+        content: '此操作将从 AD 中永久删除该用户，不可恢复。',
+        okText: '确认删除',
+        okButtonProps: { danger: true },
+        cancelText: '取消',
+        onOk: () => handleDelete(user.dn),
+      })
     }
   }
 
@@ -257,7 +306,13 @@ const UserSearch: React.FC = () => {
           selectedRowKeys: selectedKeys,
           onChange: (keys) => setSelectedKeys(keys),
         }}
-        onRow={(record) => ({ onDoubleClick: () => setPasswordModal({ open: true, user: record }) })}
+        onRow={(record) => ({
+          onDoubleClick: () => setPasswordModal({ open: true, user: record }),
+          onContextMenu: (e) => {
+            e.preventDefault()
+            setCtxMenu({ open: true, x: e.clientX, y: e.clientY, user: record })
+          },
+        })}
         locale={{ emptyText: loading ? '加载中...' : '暂无用户，可输入关键词搜索' }}
         pagination={users.length > 0 ? {
           pageSize: 10,
@@ -276,6 +331,28 @@ const UserSearch: React.FC = () => {
         onConfirm={(pwd, force) => {
           handleChangePassword(passwordModal.user!.dn, pwd, force)
           setPasswordModal({ open: false, user: null })
+        }}
+      />
+    )}
+    {/* 行右键菜单：在鼠标位置渲染一个锚点，由 Dropdown 挂载菜单 */}
+    <Dropdown
+      open={ctxMenu.open}
+      onOpenChange={(open) => { if (!open) setCtxMenu(prev => ({ ...prev, open: false })) }}
+      trigger={['contextMenu']}
+      menu={{ items: ctxItems, onClick: handleCtxClick }}
+    >
+      <div style={{ position: 'fixed', left: ctxMenu.x, top: ctxMenu.y, width: 1, height: 1, pointerEvents: 'none' }} />
+    </Dropdown>
+    {attrsModalUser && (
+      <EditAttributesModal
+        user={attrsModalUser}
+        onClose={() => setAttrsModalUser(null)}
+        onSaved={() => {
+          // 保存后重新拉取当前列表，保证状态与域控一致
+          tauriService.getConfig()
+            .then(cfg => tauriService.listUsers(cfg))
+            .then(list => setUsers(list))
+            .catch(() => {})
         }}
       />
     )}

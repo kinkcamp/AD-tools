@@ -20,6 +20,14 @@ export const tauriService = {
     invoke<void>('change_password', { cfg, userDn, newPassword, forceChange }),
   deleteUser: (cfg: AppConfig, userDn: string) =>
     invoke<void>('delete_user', { cfg, userDn }),
+  // 启用/禁用账户（UAC 置位）
+  setAccountEnabled: (cfg: AppConfig, userDn: string, enable: boolean) =>
+    invoke<void>('set_account_enabled', { cfg, userDn, enable }),
+  // 单用户属性读取/修改（右键菜单的属性编辑器）
+  getUserDetail: (cfg: AppConfig, userDn: string) =>
+    invoke<Record<string, string>>('get_user_detail', { cfg, userDn }),
+  modifyUserAttributes: (cfg: AppConfig, userDn: string, attrs: Record<string, string>) =>
+    invoke<number>('modify_user_attributes', { cfg, userDn, attrs }),
 
   // Batch operations
   batchCreateUsers: (cfg: AppConfig, users: NewUserSpec[]) =>
