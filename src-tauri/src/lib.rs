@@ -6,7 +6,8 @@ mod operation_log;
 use config::AppConfig;
 use ldap_client::LdapClient;
 use std::collections::HashMap;
-use tauri::Emitter;
+#[cfg_attr(not(target_os = "windows"), allow(unused_imports))]
+use tauri::{Emitter, Manager};
 
 #[tauri::command]
 fn get_config() -> Result<AppConfig, String> {
@@ -194,10 +195,49 @@ fn generate_template(format: String, path: String) -> Result<(), String> {
     }
 }
 
+/// Windows 11 窗口默认不给第三方框架（如 WebView2）自动圆角，
+/// 需显式调用 DWM API 选择圆角；Win10/Server 2022 不支持该属性，调用返回错误直接忽略
+#[cfg(target_os = "windows")]
+mod win_rounded_corners {
+    use std::ffi::c_void;
+    const DWMWA_WINDOW_CORNER_PREFERENCE: u32 = 33;
+    const DWMWCP_ROUND: u32 = 2;
+
+    #[link(name = "dwmapi")]
+    extern "system" {
+        fn DwmSetWindowAttribute(hwnd: isize, attr: u32, pv: *const c_void, cb: u32) -> i32;
+    }
+
+    pub fn enable(hwnd: isize) {
+        let pref: u32 = DWMWCP_ROUND;
+        unsafe {
+            DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_WINDOW_CORNER_PREFERENCE,
+                &pref as *const u32 as *const c_void,
+                std::mem::size_of::<u32>() as u32,
+            );
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .setup(|app| {
+            #[cfg(target_os = "windows")]
+            {
+                if let Some(window) = app.get_webview_window("main") {
+                    if let Ok(hwnd) = window.hwnd() {
+                        win_rounded_corners::enable(hwnd.0 as isize);
+                    }
+                }
+            }
+            #[cfg(not(target_os = "windows"))]
+            let _ = app;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             get_config,
             save_config_cmd,
