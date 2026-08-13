@@ -6,6 +6,8 @@ export interface ADUser {
   department: string
   status: 'active' | 'disabled' | 'locked'
   lastLogin: string
+  uidNumber: string
+  gidNumber: string
 }
 
 export interface AppConfig {

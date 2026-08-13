@@ -43,6 +43,11 @@ pub struct ADUser {
     pub department: String,
     pub status: String,
     pub last_login: String,
+    // POSIX 属性（Identity Management for UNIX），未设置时为空字符串
+    #[serde(rename = "uidNumber")]
+    pub uid_number: String,
+    #[serde(rename = "gidNumber")]
+    pub gid_number: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -187,6 +192,8 @@ impl LdapClient {
             department: se.attrs.get("department").and_then(|v| v.first()).cloned().unwrap_or_default(),
             status: status.to_string(),
             last_login: String::new(),
+            uid_number: se.attrs.get("uidNumber").and_then(|v| v.first()).cloned().unwrap_or_default(),
+            gid_number: se.attrs.get("gidNumber").and_then(|v| v.first()).cloned().unwrap_or_default(),
         }
     }
 
@@ -196,7 +203,7 @@ impl LdapClient {
         lower.ends_with('$') || lower == "krbtgt" || lower == "guest"
     }
 
-    const USER_ATTRS: [&'static str; 5] = ["sAMAccountName", "displayName", "mail", "department", "userAccountControl"];
+    const USER_ATTRS: [&'static str; 7] = ["sAMAccountName", "displayName", "mail", "department", "userAccountControl", "uidNumber", "gidNumber"];
 
     pub async fn search_users(&self, keyword: &str, _ou_filter: &str) -> Result<Vec<ADUser>, String> {
         let (mut ldap, _) = self.connect().await?;

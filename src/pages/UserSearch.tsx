@@ -37,6 +37,20 @@ const columns: ColumnsType<ADUser> = [
     key: 'department',
   },
   {
+    title: 'UID',
+    dataIndex: 'uidNumber',
+    key: 'uidNumber',
+    width: 70,
+    render: (text: string) => text ? <span style={{ fontFamily: 'monospace' }}>{text}</span> : <span style={{ color: '#ccc' }}>—</span>,
+  },
+  {
+    title: 'GID',
+    dataIndex: 'gidNumber',
+    key: 'gidNumber',
+    width: 70,
+    render: (text: string) => text ? <span style={{ fontFamily: 'monospace' }}>{text}</span> : <span style={{ color: '#ccc' }}>—</span>,
+  },
+  {
     title: '状态',
     dataIndex: 'status',
     key: 'status',
@@ -144,9 +158,10 @@ const UserSearch: React.FC = () => {
       message.warning('没有可导出的数据')
       return
     }
-    const headers = ['sAMAccountName', 'displayName', 'mail', 'department', 'status', 'dn']
+    const headers = ['sAMAccountName', 'displayName', 'mail', 'department', 'uidNumber', 'gidNumber', 'status', 'dn']
     const lines = users.map(u => [
       u.sAMAccountName, u.displayName, u.mail, u.department,
+      u.uidNumber, u.gidNumber,
       statusMap[u.status]?.label || u.status, u.dn,
     ].map(csvCell).join(','))
     const blob = new Blob(['\ufeff' + [headers.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8' })
