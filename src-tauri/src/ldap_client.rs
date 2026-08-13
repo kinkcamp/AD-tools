@@ -591,28 +591,43 @@ impl LdapClient {
             .and_then(|v| v.first()).cloned()
             .ok_or_else(|| "未获取到架构命名上下文".to_string())?;
 
-        // 2. 沿继承链向上（user → person → organizationalPerson → top）收集全部可设属性
+        // 2. 沿继承链向上（user → person → organizationalPerson → top）收集全部可设属性；
+        // 同时收集 user 的辅助类（auxiliaryClass，如 UNIX 扩展的 posixAccount/shadowAccount，
+        // uidNumber/gidNumber/loginShell 等属性挂在这些类上）及其继承链
         // 类在 schema 容器内的 CN 与显示名不同（如 CN=Class-Person），需用 lDAPDisplayName 搜索定位
         let mut names: HashSet<String> = HashSet::new();
-        let mut class = "user".to_string();
-        loop {
-            let filter = format!("(&(objectClass=classSchema)(lDAPDisplayName={}))", ldap_escape(&class));
-            let res = ldap.search(&schema_nc, Scope::OneLevel, &filter,
-                vec!["mayContain", "systemMayContain", "mustContain", "systemMustContain", "subClassOf"])
-                .await.map_err(|e| format!("查询架构类失败: {}", e))?;
-            let (entries, _) = res.success().map_err(|e| format!("查询架构类失败: {}", e))?;
-            let entry = match entries.into_iter().next() {
-                Some(e) => SearchEntry::construct(e),
-                None => break,
-            };
-            for key in ["mayContain", "systemMayContain", "mustContain", "systemMustContain"] {
-                if let Some(vals) = entry.attrs.get(key) {
-                    for v in vals { names.insert(v.clone()); }
-                }
+        let mut queue: Vec<String> = vec!["user".to_string()];
+        let mut visited: HashSet<String> = HashSet::new();
+        while let Some(start) = queue.pop() {
+            if !visited.insert(start.to_ascii_lowercase()) {
+                continue;
             }
-            match entry.attrs.get("subClassOf").and_then(|v| v.first()) {
-                Some(parent) if !parent.eq_ignore_ascii_case("top") => class = parent.clone(),
-                _ => break,
+            let mut class = start.clone();
+            loop {
+                let filter = format!("(&(objectClass=classSchema)(lDAPDisplayName={}))", ldap_escape(&class));
+                let res = ldap.search(&schema_nc, Scope::OneLevel, &filter,
+                    vec!["mayContain", "systemMayContain", "mustContain", "systemMustContain", "subClassOf", "auxiliaryClass"])
+                    .await.map_err(|e| format!("查询架构类失败: {}", e))?;
+                let (entries, _) = res.success().map_err(|e| format!("查询架构类失败: {}", e))?;
+                let entry = match entries.into_iter().next() {
+                    Some(e) => SearchEntry::construct(e),
+                    None => break,
+                };
+                for key in ["mayContain", "systemMayContain", "mustContain", "systemMustContain"] {
+                    if let Some(vals) = entry.attrs.get(key) {
+                        for v in vals { names.insert(v.clone()); }
+                    }
+                }
+                // 仅对起点类（user）展开其辅助类，避免递归收集无关类
+                if class.eq_ignore_ascii_case(&start) {
+                    if let Some(aux) = entry.attrs.get("auxiliaryClass") {
+                        for a in aux { queue.push(a.clone()); }
+                    }
+                }
+                match entry.attrs.get("subClassOf").and_then(|v| v.first()) {
+                    Some(parent) if !parent.eq_ignore_ascii_case("top") => class = parent.clone(),
+                    _ => break,
+                }
             }
         }
 
