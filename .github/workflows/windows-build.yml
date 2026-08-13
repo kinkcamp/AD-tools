@@ -28,6 +28,13 @@ jobs:
       - name: Build Tauri app (NSIS)
         run: npx tauri build --bundles nsis
 
+      # 构建机编码会把文件名里的中文吃掉（AD域控助手 → AD.），统一重命名为 ASCII 文件名
+      - name: Rename installer
+        shell: pwsh
+        run: |
+          $v = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe" | Rename-Item -NewName "AD-Assistant_${v}_x64-setup.exe"
+
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
