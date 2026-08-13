@@ -10,14 +10,10 @@ import Settings from './pages/Settings'
 import Logs from './pages/Logs'
 
 const App: React.FC = () => {
-  // 禁用 WebView 默认右键菜单（复制/检查等无实际功能的项），
-  // 输入框内保留以便复制粘贴；用户搜索表格行的自定义右键菜单为程序自绘，不受影响
+  // 禁用 WebView 默认右键菜单（复制/检查等无实际功能的项，含输入框）；
+  // 用户搜索表格行的自定义右键菜单为程序自绘，不受影响
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      const target = e.target as HTMLElement
-      if (target.closest('input, textarea')) return
-      e.preventDefault()
-    }
+    const handler = (e: MouseEvent) => e.preventDefault()
     document.addEventListener('contextmenu', handler)
     return () => document.removeEventListener('contextmenu', handler)
   }, [])
