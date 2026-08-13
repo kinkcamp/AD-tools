@@ -33,8 +33,9 @@ body {
 ::-webkit-scrollbar-thumb { background: #d0d0d0; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #bbb; }
 
-/* 分页器固定在页面滚动区底部，高度与侧边栏底部状态栏（SSL 已连接，40px）一致；
-   总数文字靠左对齐表格左边缘，页码按钮靠右 */
+/* 分页器固定在页面滚动区最底部，与侧边栏底部状态栏（SSL 已连接，40px）
+   处于同一水平线：负外边距穿透内容区 16px 内边距并横向撑满，内部内容保持对齐；
+   总数文字靠左，页码按钮靠右 */
 .ant-table-wrapper .ant-table-pagination.ant-pagination {
   position: sticky;
   bottom: -16px;
@@ -44,8 +45,8 @@ body {
   box-sizing: border-box;
   justify-content: flex-end;
   background: #fff;
-  margin: 0;
-  padding: 0;
+  margin: 0 -16px -16px;
+  padding: 0 16px;
   border-top: 1px solid #f0f0f0;
 }
 .ant-table-wrapper .ant-table-pagination.ant-pagination .ant-pagination-total-text {
