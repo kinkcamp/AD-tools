@@ -172,7 +172,7 @@ const BatchAttributes: React.FC = () => {
   return (
     <>
       <TopBar title="批量修改属性" />
-      <div style={{ flex: 1, padding: 16, overflowY: 'auto' }}>
+      <div className="page-scroll" style={{ flex: 1, padding: 16, overflowY: 'auto' }}>
         <div style={{ border: '1px solid #eee', borderRadius: 8, padding: 16, marginBottom: 16 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#1a1a1a', marginBottom: 12 }}>选择要修改的属性</div>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>

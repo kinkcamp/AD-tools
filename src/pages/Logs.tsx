@@ -72,7 +72,7 @@ const Logs: React.FC = () => {
         title="操作日志"
         actions={<Button size="small" onClick={loadLogs} loading={loading}>刷新</Button>}
       />
-      <div style={{ flex: 1, padding: 16, overflowY: 'auto' }}>
+      <div className="page-scroll" style={{ flex: 1, padding: 16, overflowY: 'auto' }}>
         <StatsRow items={[
           { label: '今日操作', value: todayLogs.length },
           { label: '成功', value: successCount },

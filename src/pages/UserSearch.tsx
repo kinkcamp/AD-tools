@@ -281,7 +281,7 @@ const UserSearch: React.FC = () => {
       }
     />
     <SearchBar onSearch={handleSearch} />
-    <div style={{ flex: 1, padding: 16, overflowY: 'auto' }}>
+    <div className="page-scroll" style={{ flex: 1, padding: 16, overflowY: 'auto' }}>
       <StatsRow items={[
         { label: '搜索结果', value: users.length },
         { label: '活跃', value: activeCount },

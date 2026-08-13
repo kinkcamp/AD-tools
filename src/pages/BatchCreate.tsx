@@ -234,7 +234,7 @@ const BatchCreate: React.FC = () => {
         }
       `}</style>
       <TopBar title="批量创建用户" />
-      <div style={{ flex: 1, padding: 16, overflowY: 'auto' }}>
+      <div className="page-scroll" style={{ flex: 1, padding: 16, overflowY: 'auto' }}>
         <StepsBar steps={[
           { label: '上传文件', status: step >= 1 ? 'done' : 'active' },
           { label: '预览确认', status: step >= 2 ? 'done' : step === 1 ? 'active' : 'pending' },

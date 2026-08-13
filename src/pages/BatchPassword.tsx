@@ -136,7 +136,7 @@ const BatchPassword: React.FC = () => {
   return (
     <>
       <TopBar title="批量修改密码" />
-      <div style={{ flex: 1, padding: 16, overflowY: 'auto' }}>
+      <div className="page-scroll" style={{ flex: 1, padding: 16, overflowY: 'auto' }}>
         <div style={{ border: '1px solid #eee', borderRadius: 8, padding: 16, marginBottom: 16 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#1a1a1a', marginBottom: 12 }}>密码策略</div>
           <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
