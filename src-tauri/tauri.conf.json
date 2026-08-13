@@ -16,7 +16,10 @@
         "width": 1200,
         "height": 750,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "windowEffects": {
+          "radius": 8
+        }
       }
     ],
     "security": {
