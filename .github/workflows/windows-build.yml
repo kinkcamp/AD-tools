@@ -21,14 +21,13 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build Tauri app (NSIS + MSI)
-        run: npx tauri build
+      # 只打 NSIS：WiX 3 的 light.exe 对中文产品名（AD域控助手）有 bug，MSI 会失败
+      - name: Build Tauri app (NSIS)
+        run: npx tauri build --bundles nsis
 
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
           name: AD域控助手-windows
-          path: |
-            src-tauri/target/release/bundle/nsis/*.exe
-            src-tauri/target/release/bundle/msi/*.msi
+          path: src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: error
