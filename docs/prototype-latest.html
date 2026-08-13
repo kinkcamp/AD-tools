@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AD域控助手 - 最新原型图（v1.0.0 当前版本）</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif; background: #e8eaed; color: #1a1a1a; padding-bottom: 70px; }
+
+  .proto-nav { position: fixed; bottom: 0; left: 0; right: 0; background: #1a1a1a; display: flex; justify-content: center; gap: 4px; padding: 10px; z-index: 1000; }
+  .proto-nav button { background: #333; color: #aaa; border: none; padding: 8px 18px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .proto-nav button.active { background: #2563eb; color: #fff; }
+  .proto-note { width: 1100px; margin: 16px auto 10px; font-size: 12px; color: #666; }
+
+  .screen { display: none; width: 1100px; margin: 0 auto; }
+  .screen.active { display: block; }
+
+  /* ===== 应用外壳 ===== */
+  .app-shell { display: flex; height: 680px; background: #fff; border-radius: 12px; overflow: hidden; border: 1px solid #ddd; box-shadow: 0 20px 40px rgba(0,0,0,.12); }
+
+  /* ===== 侧边栏 ===== */
+  .sidebar { width: 200px; background: #fafafa; border-right: 1px solid #eee; display: flex; flex-direction: column; flex-shrink: 0; }
+  .sidebar-logo { height: 64px; padding: 0 16px; border-bottom: 1px solid #eee; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .logo-icon { width: 28px; height: 28px; background: #1a1a1a; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 700; }
+  .logo-text { font-size: 13px; font-weight: 600; }
+  .sidebar-nav { flex: 1; padding: 8px; overflow-y: auto; }
+  .nav-group { margin-bottom: 12px; }
+  .nav-group-title { font-size: 10px; text-transform: uppercase; color: #999; padding: 6px 10px; letter-spacing: .8px; font-weight: 500; }
+  .nav-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 6px; font-size: 12px; color: #555; cursor: pointer; margin-bottom: 2px; }
+  .nav-item .icon { width: 16px; text-align: center; font-size: 13px; }
+  .nav-item:hover { background: #f0f0f0; }
+  .nav-item.active { background: #1a1a1a; color: #fff; }
+  .sidebar-footer { height: 40px; padding: 0 16px; border-top: 1px solid #eee; display: flex; align-items: center; flex-shrink: 0; }
+  .ssl-badge { display: flex; align-items: center; gap: 6px; font-size: 10px; color: #52c41a; font-weight: 500; }
+  .ssl-dot { width: 6px; height: 6px; background: #52c41a; border-radius: 50%; }
+
+  /* ===== 主内容区 ===== */
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .topbar { height: 64px; border-bottom: 1px solid #eee; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; flex-shrink: 0; }
+  .topbar-title { font-size: 14px; font-weight: 600; letter-spacing: -.2px; }
+  .topbar-actions { display: flex; gap: 6px; }
+
+  .btn { padding: 5px 12px; border-radius: 6px; border: 1px solid #d9d9d9; background: #fff; cursor: pointer; font-size: 12px; color: #1a1a1a; }
+  .btn-primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+  .btn-danger-text { border: none; background: none; color: #dc2626; }
+  .btn-sm { padding: 3px 8px; font-size: 11px; }
+
+  /* ===== 搜索栏（左右边距 18px，与侧边栏菜单项对齐）===== */
+  .searchbar { padding: 12px 18px; border-bottom: 1px solid #eee; display: flex; gap: 8px; }
+  .search-input { flex: 1; padding: 7px 11px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 12px; color: #999; }
+
+  /* ===== 内容滚动区 ===== */
+  .content { flex: 1; padding: 16px; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+
+  /* ===== 统计卡片 ===== */
+  .stats { display: flex; gap: 12px; margin-bottom: 16px; }
+  .stat-card { flex: 1; border: 1px solid #eee; border-radius: 8px; padding: 12px 16px; }
+  .stat-label { font-size: 11px; color: #888; margin-bottom: 4px; }
+  .stat-value { font-size: 22px; font-weight: 700; }
+
+  /* ===== 表格 ===== */
+  .table-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { text-align: left; padding: 8px 10px; color: #888; font-weight: 500; font-size: 11px; border-bottom: 1px solid #eee; background: #fff; }
+  td { padding: 8px 10px; border-bottom: 1px solid #f5f5f5; }
+  tr:hover td { background: #fafafa; }
+  .uname { font-weight: 600; }
+  .mono { font-family: 'SF Mono', Menlo, monospace; }
+  .dim { color: #ccc; }
+  .muted { color: #999; font-size: 11px; }
+  .pill { padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 500; }
+  .pill-active { background: #f0fdf4; color: #16a34a; }
+  .pill-disabled { background: #fef2f2; color: #dc2626; }
+
+  /* ===== 分页条（40px，与侧边栏 footer 等高）===== */
+  .pagination { height: 40px; border-top: 1px solid #f0f0f0; background: #fff; display: flex; align-items: center; flex-shrink: 0; }
+  .pg-total { margin-right: auto; font-size: 11px; color: #666; }
+  .pg-item { min-width: 24px; height: 24px; padding: 0 6px; border: 1px solid #d9d9d9; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 11px; margin-left: 6px; cursor: pointer; background: #fff; }
+  .pg-item.current { border-color: #2563eb; color: #2563eb; }
+  .pg-size { margin-left: 8px; padding: 4px 8px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 11px; color: #333; background: #fff; }
+
+  /* ===== 右键菜单 ===== */
+  .ctx-menu { position: absolute; width: 170px; background: #fff; border-radius: 8px; box-shadow: 0 6px 16px rgba(0,0,0,.12); padding: 4px; z-index: 50; }
+  .ctx-item { padding: 7px 12px; font-size: 12px; border-radius: 5px; cursor: pointer; }
+  .ctx-item:hover { background: #f5f5f5; }
+  .ctx-item.danger { color: #dc2626; }
+  .ctx-divider { height: 1px; background: #f0f0f0; margin: 4px 0; }
+
+  /* ===== 弹窗 ===== */
+  .modal-mask { position: absolute; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; z-index: 60; }
+  .modal { width: 560px; background: #fff; border-radius: 10px; padding: 16px 20px; box-shadow: 0 20px 50px rgba(0,0,0,.2); }
+  .modal-title { font-size: 13px; font-weight: 600; margin-bottom: 14px; }
+  .attr-row { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
+  .attr-name { width: 170px; font-size: 11px; color: #555; font-family: 'SF Mono', Menlo, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .attr-input { flex: 1; padding: 4px 8px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 12px; }
+  .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+  .add-section { border-top: 1px solid #f0f0f0; padding-top: 10px; margin-top: 12px; }
+  .add-label { font-size: 11px; color: #666; font-weight: 500; margin-bottom: 6px; }
+  .hint { font-size: 10px; color: #999; margin-top: 6px; }
+
+  /* ===== 批量创建页 ===== */
+  .steps { display: flex; gap: 0; margin-bottom: 16px; }
+  .step { flex: 1; display: flex; align-items: center; gap: 8px; font-size: 12px; color: #999; }
+  .step-dot { width: 22px; height: 22px; border-radius: 50%; border: 1px solid #d9d9d9; display: flex; align-items: center; justify-content: center; font-size: 11px; background: #fff; }
+  .step.done .step-dot { background: #16a34a; border-color: #16a34a; color: #fff; }
+  .step.done { color: #1a1a1a; }
+  .step.active .step-dot { border-color: #2563eb; color: #2563eb; }
+  .step.active { color: #2563eb; font-weight: 500; }
+  .upload-zone { border: 2px dashed #d9d9d9; border-radius: 10px; padding: 46px; text-align: center; color: #888; font-size: 13px; margin-bottom: 14px; }
+  .upload-zone .big { font-size: 30px; margin-bottom: 8px; }
+  .tpl-btns { display: flex; gap: 8px; justify-content: center; }
+
+  /* ===== 设置页 ===== */
+  .form-card { border: 1px solid #eee; border-radius: 8px; padding: 20px; max-width: 480px; }
+  .form-row { margin-bottom: 14px; }
+  .form-label { display: block; font-size: 11px; color: #666; margin-bottom: 5px; font-weight: 500; }
+  .form-input { width: 100%; padding: 7px 11px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<div class="proto-note">原型图 · AD域控助手 v1.0.0（与当前发布版本一致）· 浅色简约风 · 关键规格：TopBar/Logo 区 64px，分页条/状态栏 40px，搜索栏边距 18px</div>
+
+<!-- ============ 屏幕 1：用户搜索（默认态） ============ -->
+<div class="screen active" id="s1">
+  <div class="app-shell">
+    <div class="sidebar">
+      <div class="sidebar-logo"><div class="logo-icon">AD</div><div class="logo-text">域控助手</div></div>
+      <div class="sidebar-nav">
+        <div class="nav-group">
+          <div class="nav-group-title">用户管理</div>
+          <div class="nav-item active"><span class="icon">⌕</span>搜索用户</div>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-title">批量操作</div>
+          <div class="nav-item"><span class="icon">+</span>批量创建用户</div>
+          <div class="nav-item"><span class="icon">⚿</span>批量修改密码</div>
+          <div class="nav-item"><span class="icon">⊞</span>批量加入组</div>
+          <div class="nav-item"><span class="icon">✎</span>批量修改属性</div>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-title">系统</div>
+          <div class="nav-item"><span class="icon">⚙</span>连接设置</div>
+          <div class="nav-item"><span class="icon">☰</span>操作日志</div>
+        </div>
+      </div>
+      <div class="sidebar-footer"><div class="ssl-badge"><div class="ssl-dot"></div>SSL 已连接</div></div>
+    </div>
+    <div class="main">
+      <div class="topbar">
+        <div class="topbar-title">搜索用户</div>
+        <div class="topbar-actions"><button class="btn btn-sm">导出</button><button class="btn btn-sm" style="color:#dc2626">批量删除</button></div>
+      </div>
+      <div class="searchbar">
+        <div class="search-input">搜索用户名、姓名、邮箱、部门...</div>
+        <button class="btn btn-primary">搜索</button>
+      </div>
+      <div class="content">
+        <div class="stats">
+          <div class="stat-card"><div class="stat-label">搜索结果</div><div class="stat-value">97</div></div>
+          <div class="stat-card"><div class="stat-label">活跃</div><div class="stat-value" style="color:#16a34a">91</div></div>
+          <div class="stat-card"><div class="stat-label">已禁用</div><div class="stat-value" style="color:#dc2626">6</div></div>
+          <div class="stat-card"><div class="stat-label">已锁定</div><div class="stat-value" style="color:#d97706">0</div></div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <tr><th style="width:28px"></th><th>用户名</th><th>姓名</th><th>邮箱</th><th>部门</th><th style="width:60px">UID</th><th style="width:60px">GID</th><th>状态</th><th>最后登录</th><th style="width:60px">操作</th></tr>
+            <tr><td><input type="checkbox"></td><td class="uname">zhaolei1</td><td>赵磊</td><td>zhaolei1@sirrr.cn</td><td></td><td class="dim">—</td><td class="dim">—</td><td><span class="pill pill-active">活跃</span></td><td class="muted">-</td><td><button class="btn btn-danger-text btn-sm">删除</button></td></tr>
+            <tr style="background:#f0f6ff"><td><input type="checkbox"></td><td class="uname">sunyue1</td><td>孙悦</td><td>sunyue1@sirrr.cn</td><td></td><td class="dim">—</td><td class="dim">—</td><td><span class="pill pill-active">活跃</span></td><td class="muted">-</td><td><button class="btn btn-danger-text btn-sm">删除</button></td></tr>
+            <tr><td><input type="checkbox"></td><td class="uname">qianbin1</td><td>钱斌</td><td>qianbin1@sirrr.cn</td><td></td><td class="dim">—</td><td class="dim">—</td><td><span class="pill pill-active">活跃</span></td><td class="muted">-</td><td><button class="btn btn-danger-text btn-sm">删除</button></td></tr>
+            <tr><td><input type="checkbox"></td><td class="uname">zhoujing1</td><td>周静</td><td>zhoujing1@sirrr.cn</td><td></td><td class="dim">—</td><td class="dim">—</td><td><span class="pill pill-active">活跃</span></td><td class="muted">-</td><td><button class="btn btn-danger-text btn-sm">删除</button></td></tr>
+            <tr><td><input type="checkbox"></td><td class="uname">wuqiang1</td><td>吴强</td><td>wuqiang1@sirrr.cn</td><td></td><td class="dim">—</td><td class="dim">—</td><td><span class="pill pill-active">活跃</span></td><td class="muted">-</td><td><button class="btn btn-danger-text btn-sm">删除</button></td></tr>
+            <tr><td><input type="checkbox"></td><td class="uname">zhengxiu1</td><td>郑秀英</td><td>zhengxiu1@sirrr.cn</td><td></td><td class="dim">—</td><td class="dim">—</td><td><span class="pill pill-active">活跃</span></td><td class="muted">-</td><td><button class="btn btn-danger-text btn-sm">删除</button></td></tr>
+          </table>
+          <div class="pagination">
+            <div class="pg-total">显示 1-10 / 共 97 条</div>
+            <div class="pg-item" style="color:#bbb">‹</div>
+            <div class="pg-item current">1</div><div class="pg-item">2</div><div class="pg-item">3</div><div class="pg-item">4</div><div class="pg-item">5</div><div class="pg-item">…</div><div class="pg-item">10</div>
+            <div class="pg-item" style="color:#333">›</div>
+            <select class="pg-size"><option>10 条/页</option><option>20 条/页</option><option>50 条/页</option><option>100 条/页</option></select>
+          </div>
+        </div>
+        <!-- 右键菜单（在"孙悦"行上右键的效果） -->
+        <div class="ctx-menu" style="left: 340px; top: 172px;">
+          <div class="ctx-item">禁用账户</div>
+          <div class="ctx-item">修改密码</div>
+          <div class="ctx-item">编辑属性 / 添加属性</div>
+          <div class="ctx-divider"></div>
+          <div class="ctx-item danger">删除用户</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 屏幕 2：属性编辑弹窗 ============ -->
+<div class="screen" id="s2">
+  <div class="app-shell">
+    <div class="sidebar">
+      <div class="sidebar-logo"><div class="logo-icon">AD</div><div class="logo-text">域控助手</div></div>
+      <div class="sidebar-nav">
+        <div class="nav-group"><div class="nav-group-title">用户管理</div><div class="nav-item active"><span class="icon">⌕</span>搜索用户</div></div>
+        <div class="nav-group"><div class="nav-group-title">批量操作</div><div class="nav-item"><span class="icon">+</span>批量创建用户</div><div class="nav-item"><span class="icon">⚿</span>批量修改密码</div><div class="nav-item"><span class="icon">⊞</span>批量加入组</div><div class="nav-item"><span class="icon">✎</span>批量修改属性</div></div>
+        <div class="nav-group"><div class="nav-group-title">系统</div><div class="nav-item"><span class="icon">⚙</span>连接设置</div><div class="nav-item"><span class="icon">☰</span>操作日志</div></div>
+      </div>
+      <div class="sidebar-footer"><div class="ssl-badge"><div class="ssl-dot"></div>SSL 已连接</div></div>
+    </div>
+    <div class="main">
+      <div class="topbar"><div class="topbar-title">搜索用户</div></div>
+      <div class="content" style="padding:0">
+        <div class="modal-mask">
+          <div class="modal">
+            <div class="modal-title">编辑属性 — sunyue1 (孙悦)</div>
+            <div class="attr-row"><span class="attr-name">displayName</span><input class="attr-input" value="孙悦"><button class="btn btn-danger-text btn-sm">移除</button></div>
+            <div class="attr-row"><span class="attr-name">mail</span><input class="attr-input" value="sunyue1@sirrr.cn"><button class="btn btn-danger-text btn-sm">移除</button></div>
+            <div class="attr-row"><span class="attr-name">department</span><input class="attr-input" value="技术部"><button class="btn btn-danger-text btn-sm">移除</button></div>
+            <div class="attr-row"><span class="attr-name">title</span><input class="attr-input" value="工程师"><button class="btn btn-danger-text btn-sm">移除</button></div>
+            <div class="attr-row"><span class="attr-name">uidNumber</span><input class="attr-input" value="10023"><button class="btn btn-danger-text btn-sm">移除</button></div>
+            <div class="attr-row"><span class="attr-name">gidNumber</span><input class="attr-input" value="10023"><button class="btn btn-danger-text btn-sm">移除</button></div>
+            <div class="attr-row"><span class="attr-name">userPrincipalName</span><input class="attr-input" value="sunyue1@sirrr.cn"><button class="btn btn-danger-text btn-sm">移除</button></div>
+            <div class="add-section">
+              <div class="add-label">添加属性</div>
+              <div style="display:flex;gap:6px">
+                <select class="attr-input" style="width:200px;flex:none"><option>选择属性名（可搜索）</option></select>
+                <input class="attr-input" placeholder="属性值">
+                <button class="btn btn-sm">添加</button>
+              </div>
+              <div class="hint">清空属性值保存 = 从 AD 中删除该属性；系统保护属性（objectClass、userAccountControl 等）不可修改</div>
+            </div>
+            <div class="modal-footer"><button class="btn">取消</button><button class="btn btn-primary">保存</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 屏幕 3：批量创建用户 ============ -->
+<div class="screen" id="s3">
+  <div class="app-shell">
+    <div class="sidebar">
+      <div class="sidebar-logo"><div class="logo-icon">AD</div><div class="logo-text">域控助手</div></div>
+      <div class="sidebar-nav">
+        <div class="nav-group"><div class="nav-group-title">用户管理</div><div class="nav-item"><span class="icon">⌕</span>搜索用户</div></div>
+        <div class="nav-group"><div class="nav-group-title">批量操作</div><div class="nav-item active"><span class="icon">+</span>批量创建用户</div><div class="nav-item"><span class="icon">⚿</span>批量修改密码</div><div class="nav-item"><span class="icon">⊞</span>批量加入组</div><div class="nav-item"><span class="icon">✎</span>批量修改属性</div></div>
+        <div class="nav-group"><div class="nav-group-title">系统</div><div class="nav-item"><span class="icon">⚙</span>连接设置</div><div class="nav-item"><span class="icon">☰</span>操作日志</div></div>
+      </div>
+      <div class="sidebar-footer"><div class="ssl-badge"><div class="ssl-dot"></div>SSL 已连接</div></div>
+    </div>
+    <div class="main">
+      <div class="topbar"><div class="topbar-title">批量创建用户</div></div>
+      <div class="content">
+        <div class="steps">
+          <div class="step active"><div class="step-dot">1</div>上传文件</div>
+          <div class="step"><div class="step-dot">2</div>预览确认</div>
+          <div class="step"><div class="step-dot">3</div>执行创建</div>
+        </div>
+        <div class="upload-zone">
+          <div class="big">⇪</div>
+          点击或拖拽上传 CSV / Excel 文件<br>
+          <span style="font-size:11px;color:#aaa">模板为域控 schema 全量字段，填哪列写哪列，空列自动跳过</span>
+        </div>
+        <div class="tpl-btns">
+          <button class="btn">下载 CSV 模板</button>
+          <button class="btn">下载 Excel 模板</button>
+        </div>
+        <div style="margin-top:16px; border:1px solid #eee; border-radius:8px; padding:14px; font-size:12px; color:#666">
+          <div style="font-weight:600; color:#1a1a1a; margin-bottom:8px">创建流程说明</div>
+          ① 上传后先执行预检查（重名 / OU 存在性 / 必填列）&nbsp;&nbsp;② 逐条创建并实时显示状态动画&nbsp;&nbsp;③ 同名显示名自动加后缀重试（张三→张三2）
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 屏幕 4：操作日志 ============ -->
+<div class="screen" id="s4">
+  <div class="app-shell">
+    <div class="sidebar">
+      <div class="sidebar-logo"><div class="logo-icon">AD</div><div class="logo-text">域控助手</div></div>
+      <div class="sidebar-nav">
+        <div class="nav-group"><div class="nav-group-title">用户管理</div><div class="nav-item"><span class="icon">⌕</span>搜索用户</div></div>
+        <div class="nav-group"><div class="nav-group-title">批量操作</div><div class="nav-item"><span class="icon">+</span>批量创建用户</div><div class="nav-item"><span class="icon">⚿</span>批量修改密码</div><div class="nav-item"><span class="icon">⊞</span>批量加入组</div><div class="nav-item"><span class="icon">✎</span>批量修改属性</div></div>
+        <div class="nav-group"><div class="nav-group-title">系统</div><div class="nav-item"><span class="icon">⚙</span>连接设置</div><div class="nav-item active"><span class="icon">☰</span>操作日志</div></div>
+      </div>
+      <div class="sidebar-footer"><div class="ssl-badge"><div class="ssl-dot"></div>SSL 已连接</div></div>
+    </div>
+    <div class="main">
+      <div class="topbar"><div class="topbar-title">操作日志</div><div class="topbar-actions"><button class="btn btn-sm">刷新</button></div></div>
+      <div class="content">
+        <div class="stats">
+          <div class="stat-card"><div class="stat-label">今日操作</div><div class="stat-value">12</div></div>
+          <div class="stat-card"><div class="stat-label">成功</div><div class="stat-value" style="color:#16a34a">11</div></div>
+          <div class="stat-card"><div class="stat-label">失败</div><div class="stat-value" style="color:#dc2626">1</div></div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <tr><th>时间</th><th>操作</th><th>目标</th><th>操作人</th><th>状态</th><th>详情</th></tr>
+            <tr><td class="muted">2026-08-13 21:04:12</td><td>启用账户</td><td class="mono" style="font-size:11px">CN=孙悦,DC=sirrr,DC=cn</td><td>administrator</td><td><span class="pill pill-active">成功</span></td><td class="muted">-</td></tr>
+            <tr><td class="muted">2026-08-13 21:02:47</td><td>修改属性(department,uidNumber)</td><td class="mono" style="font-size:11px">CN=孙悦,DC=sirrr,DC=cn</td><td>administrator</td><td><span class="pill pill-active">成功</span></td><td class="muted">-</td></tr>
+            <tr><td class="muted">2026-08-13 20:55:03</td><td>批量创建用户</td><td>100 条</td><td>administrator</td><td><span class="pill pill-active">成功 98</span></td><td class="muted">2 条跳过</td></tr>
+            <tr><td class="muted">2026-08-13 20:41:19</td><td>修改密码</td><td class="mono" style="font-size:11px">CN=赵磊,DC=sirrr,DC=cn</td><td>administrator</td><td><span class="pill pill-disabled">失败</span></td><td class="muted">密码不满足复杂度</td></tr>
+          </table>
+          <div class="pagination">
+            <div class="pg-total">显示 1-4 / 共 4 条</div>
+            <div class="pg-item" style="color:#bbb">‹</div><div class="pg-item current">1</div><div class="pg-item" style="color:#bbb">›</div>
+            <select class="pg-size"><option>10 条/页</option></select>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 屏幕 5：连接设置 ============ -->
+<div class="screen" id="s5">
+  <div class="app-shell">
+    <div class="sidebar">
+      <div class="sidebar-logo"><div class="logo-icon">AD</div><div class="logo-text">域控助手</div></div>
+      <div class="sidebar-nav">
+        <div class="nav-group"><div class="nav-group-title">用户管理</div><div class="nav-item"><span class="icon">⌕</span>搜索用户</div></div>
+        <div class="nav-group"><div class="nav-group-title">批量操作</div><div class="nav-item"><span class="icon">+</span>批量创建用户</div><div class="nav-item"><span class="icon">⚿</span>批量修改密码</div><div class="nav-item"><span class="icon">⊞</span>批量加入组</div><div class="nav-item"><span class="icon">✎</span>批量修改属性</div></div>
+        <div class="nav-group"><div class="nav-group-title">系统</div><div class="nav-item active"><span class="icon">⚙</span>连接设置</div><div class="nav-item"><span class="icon">☰</span>操作日志</div></div>
+      </div>
+      <div class="sidebar-footer"><div class="ssl-badge"><div class="ssl-dot"></div>SSL 已连接</div></div>
+    </div>
+    <div class="main">
+      <div class="topbar"><div class="topbar-title">连接设置</div></div>
+      <div class="content">
+        <div class="form-card">
+          <div class="form-row"><label class="form-label">服务器地址</label><input class="form-input" value="110.42.189.8"></div>
+          <div class="form-row"><label class="form-label">域名</label><input class="form-input" value="sirrr.cn"></div>
+          <div class="form-row"><label class="form-label">用户名</label><input class="form-input" value="administrator"></div>
+          <div class="form-row"><label class="form-label">密码</label><input class="form-input" type="password" value="••••••••••"></div>
+          <div style="display:flex;gap:8px">
+            <button class="btn">测试连接</button>
+            <button class="btn btn-primary">保存</button>
+          </div>
+          <div class="hint" style="margin-top:10px">优先使用 LDAPS（636），域控无证书时自动回退明文 LDAP（389）并提示警告</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="proto-nav">
+  <button class="active" onclick="show('s1',this)">用户搜索 + 右键菜单</button>
+  <button onclick="show('s2',this)">属性编辑弹窗</button>
+  <button onclick="show('s3',this)">批量创建用户</button>
+  <button onclick="show('s4',this)">操作日志</button>
+  <button onclick="show('s5',this)">连接设置</button>
+</div>
+
+<script>
+function show(id, btn) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.proto-nav button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+</script>
+</body>
+</html>
