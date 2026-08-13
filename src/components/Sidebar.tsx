@@ -100,7 +100,7 @@ const Sidebar: React.FC = () => {
           </div>
         ))}
       </div>
-      <div style={{ padding: '12px 16px', borderTop: '1px solid #eee' }}>
+      <div style={{ height: 40, padding: '0 16px', borderTop: '1px solid #eee', display: 'flex', alignItems: 'center', boxSizing: 'border-box', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: status.color, fontWeight: 500 }}>
           <div style={{ width: 6, height: 6, background: status.color, borderRadius: '50%' }} />
           {status.label}
