@@ -110,6 +110,27 @@ td.ant-table-cell {
 .nowrap-table .ant-table-cell {
   white-space: nowrap;
 }
+/* 横向滚动条常驻显示（覆盖 macOS 悬停才浮现的 overlay 样式），
+   紧贴在底部分页器上方 */
+.nowrap-table .ant-table-content::-webkit-scrollbar,
+.nowrap-table .ant-table-body::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+  display: block;
+}
+.nowrap-table .ant-table-content::-webkit-scrollbar-thumb,
+.nowrap-table .ant-table-body::-webkit-scrollbar-thumb {
+  background: #d0d0d0;
+  border-radius: 4px;
+}
+.nowrap-table .ant-table-content::-webkit-scrollbar-thumb:hover,
+.nowrap-table .ant-table-body::-webkit-scrollbar-thumb:hover {
+  background: #b5b5b5;
+}
+.nowrap-table .ant-table-content::-webkit-scrollbar-track,
+.nowrap-table .ant-table-body::-webkit-scrollbar-track {
+  background: #fafafa;
+}
 .page-scroll > .ant-table-wrapper,
 .user-center-main > .ant-table-wrapper {
   flex: 1;
