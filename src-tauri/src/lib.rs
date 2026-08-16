@@ -35,9 +35,15 @@ async fn search_users(cfg: AppConfig, keyword: String) -> Result<Vec<ldap_client
 }
 
 #[tauri::command]
-async fn list_users(cfg: AppConfig) -> Result<Vec<ldap_client::ADUser>, String> {
+async fn list_users(cfg: AppConfig, ou_dn: Option<String>) -> Result<Vec<ldap_client::ADUser>, String> {
     let client = LdapClient::new(cfg);
-    client.list_users().await
+    client.list_users(ou_dn.as_deref()).await
+}
+
+#[tauri::command]
+async fn list_ou_tree(cfg: AppConfig) -> Result<ldap_client::OuNode, String> {
+    let client = LdapClient::new(cfg);
+    client.list_ou_tree().await
 }
 
 #[tauri::command]
@@ -244,6 +250,7 @@ pub fn run() {
             test_connection,
             search_users,
             list_users,
+            list_ou_tree,
             change_password,
             delete_user,
             batch_create_users,

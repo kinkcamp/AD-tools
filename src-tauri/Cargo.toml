@@ -1,6 +1,6 @@
 [package]
 name = "ad-assistant"
-version = "1.0.7"
+version = "1.0.8"
 description = "AD 域控助手"
 authors = []
 edition = "2021"

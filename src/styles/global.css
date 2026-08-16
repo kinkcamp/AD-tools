@@ -82,13 +82,38 @@ td.ant-table-cell {
   display: flex;
   flex-direction: column;
 }
-.page-scroll > .ant-table-wrapper {
+
+/* 用户中心：左侧 OU 树 + 右侧用户表格的横向布局 */
+.page-scroll.user-center-layout {
+  flex-direction: row;
+  overflow: hidden;
+}
+.ou-tree-panel {
+  width: 220px;
+  flex-shrink: 0;
+  margin: 16px 0 16px 16px;
+  background: #fff;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  padding: 8px 4px;
+  overflow-y: auto;
+}
+.user-center-main {
+  flex: 1;
+  min-width: 0;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+}
+.page-scroll > .ant-table-wrapper,
+.user-center-main > .ant-table-wrapper {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
 .page-scroll > .ant-table-wrapper > .ant-spin-nested-loading,
+.user-center-main > .ant-table-wrapper > .ant-spin-nested-loading,
 .page-scroll .ant-spin-nested-loading > .ant-spin-container {
   flex: 1;
   display: flex;

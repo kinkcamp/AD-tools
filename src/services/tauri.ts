@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import type {
   ADUser, AppConfig, BatchPasswordItem, BatchResult,
-  LogEntry, NewUserSpec, ParseResult,
+  LogEntry, NewUserSpec, OuNode, ParseResult,
 } from '../types'
 
 export const tauriService = {
@@ -15,7 +15,10 @@ export const tauriService = {
   // Users
   searchUsers: (cfg: AppConfig, keyword: string) =>
     invoke<ADUser[]>('search_users', { cfg, keyword }),
-  listUsers: (cfg: AppConfig) => invoke<ADUser[]>('list_users', { cfg }),
+  listUsers: (cfg: AppConfig, ouDn?: string | null) =>
+    invoke<ADUser[]>('list_users', { cfg, ouDn: ouDn ?? null }),
+  // 拉取全域 OU/容器树（用户中心左侧树）
+  listOuTree: (cfg: AppConfig) => invoke<OuNode>('list_ou_tree', { cfg }),
   changePassword: (cfg: AppConfig, userDn: string, newPassword: string, forceChange: boolean) =>
     invoke<void>('change_password', { cfg, userDn, newPassword, forceChange }),
   deleteUser: (cfg: AppConfig, userDn: string) =>

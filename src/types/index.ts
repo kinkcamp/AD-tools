@@ -11,6 +11,13 @@ export interface ADUser {
   gidNumber: string
 }
 
+// OU/容器树节点（用户中心左侧树）
+export interface OuNode {
+  dn: string
+  name: string
+  children: OuNode[]
+}
+
 export interface AppConfig {
   server: string
   domain: string

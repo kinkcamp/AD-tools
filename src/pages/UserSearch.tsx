@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
-import { Table, Button, message, Popconfirm, Modal, Dropdown, Tooltip } from 'antd'
+import { Table, Button, message, Popconfirm, Modal, Dropdown, Tooltip, Tree } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
+import type { DataNode } from 'antd/es/tree'
 import type { MenuProps } from 'antd'
 import TopBar from '../components/TopBar'
 import SearchBar from '../components/SearchBar'
@@ -8,7 +9,7 @@ import StatsRow from '../components/StatsRow'
 import ChangePasswordModal from './modals/ChangePasswordModal'
 import EditAttributesModal from './modals/EditAttributesModal'
 import { tauriService } from '../services/tauri'
-import type { ADUser } from '../types'
+import type { ADUser, OuNode } from '../types'
 
 const statusMap = {
   active: { label: '活跃', bg: '#f0fdf4', color: '#16a34a' },
@@ -102,8 +103,12 @@ const UserSearch: React.FC = () => {
   const [attrsModalUser, setAttrsModalUser] = useState<ADUser | null>(null)
   // 行右键菜单状态
   const [ctxMenu, setCtxMenu] = useState<{ open: boolean; x: number; y: number; user: ADUser | null }>({ open: false, x: 0, y: 0, user: null })
+  // OU 树：全域 OU/容器层级，默认全部折叠（只显示根节点域）
+  const [ouTree, setOuTree] = useState<OuNode | null>(null)
+  const [currentOu, setCurrentOu] = useState<string | null>(null)
+  const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([])
 
-  // 进入页面自动加载 Users 容器下的用户（系统内置账户已由后端排除）
+  // 进入页面自动加载：全域用户 + OU 树（系统内置账户已由后端排除）
   useEffect(() => {
     let cancelled = false
     const load = async () => {
@@ -111,8 +116,15 @@ const UserSearch: React.FC = () => {
         const config = await tauriService.getConfig()
         if (!config.server || !config.domain) return
         setLoading(true)
-        const result = await tauriService.listUsers(config)
-        if (!cancelled) setUsers(result)
+        const [result, tree] = await Promise.all([
+          tauriService.listUsers(config),
+          tauriService.listOuTree(config).catch(() => null),
+        ])
+        if (!cancelled) {
+          setUsers(result)
+          setOuTree(tree)
+          if (tree) setCurrentOu(tree.dn)
+        }
       } catch {
         // 连接失败时静默处理，由侧边栏状态与手动搜索提示覆盖
       } finally {
@@ -122,6 +134,30 @@ const UserSearch: React.FC = () => {
     load()
     return () => { cancelled = true }
   }, [])
+
+  // 选中 OU 树节点 → 加载该 OU/容器子树下的用户（点根节点即全域）
+  const handleSelectOu = async (dn: string) => {
+    setCurrentOu(dn)
+    setSelectedKeys([])
+    setLoading(true)
+    try {
+      const config = await tauriService.getConfig()
+      if (!config.server || !config.domain) return
+      const result = await tauriService.listUsers(config, dn)
+      setUsers(result)
+    } catch (err) {
+      message.error(`加载失败: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // OU 树递归转 antd Tree 数据
+  const toTreeData = (n: OuNode): DataNode => ({
+    key: n.dn,
+    title: n.name,
+    children: n.children.map(toTreeData),
+  })
 
   const handleSearch = async (keyword: string) => {
     if (!keyword.trim()) {
@@ -295,7 +331,24 @@ const UserSearch: React.FC = () => {
       }
     />
     <SearchBar onSearch={handleSearch} />
-    <div className="page-scroll" style={{ flex: 1, padding: 16, overflowY: 'auto' }}>
+    <div className="page-scroll user-center-layout" style={{ flex: 1 }}>
+      {/* 左侧 OU 树：读取全域 OU/容器，默认折叠，点选节点过滤右侧用户列表 */}
+      <div className="ou-tree-panel">
+        {ouTree ? (
+          <Tree
+            treeData={[toTreeData(ouTree)]}
+            selectedKeys={currentOu ? [currentOu] : []}
+            expandedKeys={expandedKeys}
+            onExpand={(keys) => setExpandedKeys(keys)}
+            onSelect={(keys) => { if (keys.length > 0) handleSelectOu(keys[0] as string) }}
+            blockNode
+            showLine={{ showLeafIcon: false }}
+          />
+        ) : (
+          <div style={{ color: '#999', fontSize: 12, padding: '8px 12px' }}>OU 树加载中...</div>
+        )}
+      </div>
+      <div className="user-center-main">
       <StatsRow items={[
         { label: '搜索结果', value: users.length },
         { label: '活跃', value: activeCount },
@@ -337,6 +390,7 @@ const UserSearch: React.FC = () => {
         } : false}
         style={{ fontSize: 12 }}
       />
+      </div>
     </div>
     {passwordModal.user && (
       <ChangePasswordModal
@@ -364,9 +418,9 @@ const UserSearch: React.FC = () => {
         user={attrsModalUser}
         onClose={() => setAttrsModalUser(null)}
         onSaved={() => {
-          // 保存后重新拉取当前列表，保证状态与域控一致
+          // 保存后重新拉取当前 OU 范围的列表，保证状态与域控一致
           tauriService.getConfig()
-            .then(cfg => tauriService.listUsers(cfg))
+            .then(cfg => tauriService.listUsers(cfg, currentOu))
             .then(list => setUsers(list))
             .catch(() => {})
         }}

@@ -52,6 +52,15 @@ pub struct ADUser {
     pub gid_number: String,
 }
 
+/// OU/容器树节点（用户中心左侧树，按域层级嵌套）
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OuNode {
+    pub dn: String,
+    pub name: String,
+    pub children: Vec<OuNode>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BatchResult {
     pub total: usize,
@@ -259,11 +268,15 @@ impl LdapClient {
         Ok(users)
     }
 
-    /// 列出全域用户（所有 OU/容器，排除系统内置账户），用于搜索页默认展示
-    pub async fn list_users(&self) -> Result<Vec<ADUser>, String> {
+    /// 列出用户（排除系统内置账户）：ou_dn 为 None 时全域扫描，
+    /// 指定 OU/容器 DN 时只扫描其子树（用户中心树节点过滤）
+    pub async fn list_users(&self, ou_dn: Option<&str>) -> Result<Vec<ADUser>, String> {
         let (mut ldap, _) = self.connect().await?;
         // 从域根全量扫描，覆盖所有 OU/容器（早期只查 CN=Users，导入到其他 OU 的用户读不到）
-        let base = self.config.base_dn();
+        let base = ou_dn
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| self.config.base_dn());
         let filter = "(&(objectClass=user)(objectCategory=person))";
 
         let mut stream = ldap.streaming_search_with(EntriesOnly::new(), &base, Scope::Subtree, filter, Self::USER_ATTRS.to_vec())
@@ -284,6 +297,41 @@ impl LdapClient {
 
         ldap.unbind().await.ok();
         Ok(users)
+    }
+
+    /// 拉取全域 OU/容器并组装成树（根节点为域本身）：
+    /// 一次 Subtree 搜索所有 organizationalUnit/container，按 DN 父级归组递归建树
+    pub async fn list_ou_tree(&self) -> Result<OuNode, String> {
+        let (mut ldap, _) = self.connect().await?;
+        let base_dn = self.config.base_dn();
+        let filter = "(|(objectClass=organizationalUnit)(objectClass=container))";
+
+        let mut stream = ldap.streaming_search_with(EntriesOnly::new(), &base_dn, Scope::Subtree, filter, vec!["distinguishedName", "name"])
+            .await
+            .map_err(|e| format!("查询 OU 树失败: {}", e))?;
+
+        // 父 DN(小写) -> 子节点 (dn, name) 列表
+        let mut children_map: HashMap<String, Vec<(String, String)>> = HashMap::new();
+        while let Some(entry) = stream.next().await.map_err(|e| format!("查询 OU 树失败: {}", e))? {
+            let se = SearchEntry::construct(entry);
+            let name = se.attrs.get("name").and_then(|v| v.first()).cloned().unwrap_or_else(|| se.dn.clone());
+            let parent = se.dn.splitn(2, ',').nth(1).unwrap_or("").to_ascii_lowercase();
+            children_map.entry(parent).or_default().push((se.dn, name));
+        }
+        let _ = stream.finish().await;
+        ldap.unbind().await.ok();
+
+        fn build(dn: String, name: String, map: &HashMap<String, Vec<(String, String)>>) -> OuNode {
+            let mut kids: Vec<(String, String)> = map.get(&dn.to_ascii_lowercase()).cloned().unwrap_or_default();
+            kids.sort_by(|a, b| a.1.to_lowercase().cmp(&b.1.to_lowercase()));
+            OuNode {
+                dn: dn.clone(),
+                name,
+                children: kids.into_iter().map(|(d, n)| build(d, n, map)).collect(),
+            }
+        }
+
+        Ok(build(base_dn.clone(), self.config.domain.clone(), &children_map))
     }
 
     /// 按 sAMAccountName 精确查找用户 DN（批量操作的定位基础）
