@@ -105,6 +105,11 @@ td.ant-table-cell {
   display: flex;
   flex-direction: column;
 }
+/* 用户中心表格：单元格文字强制单行不换行，
+   内容超宽时由表格底部横向滚动条查看 */
+.nowrap-table .ant-table-cell {
+  white-space: nowrap;
+}
 .page-scroll > .ant-table-wrapper,
 .user-center-main > .ant-table-wrapper {
   flex: 1;

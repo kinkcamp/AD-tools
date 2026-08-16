@@ -22,29 +22,32 @@ const columns: ColumnsType<ADUser> = [
     title: '用户名',
     dataIndex: 'sAMAccountName',
     key: 'sAMAccountName',
+    width: 120,
     render: (text: string) => <span style={{ fontWeight: 600, color: '#1a1a1a' }}>{text}</span>,
   },
   {
     title: '姓名',
     dataIndex: 'displayName',
     key: 'displayName',
+    width: 110,
   },
   {
     title: '邮箱',
     dataIndex: 'mail',
     key: 'mail',
+    width: 210,
   },
   {
     title: '部门',
     dataIndex: 'department',
     key: 'department',
+    width: 110,
   },
   {
     title: '所在组',
     dataIndex: 'groups',
     key: 'groups',
-    width: 200,
-    ellipsis: true,
+    width: 220,
     render: (text: string) => text
       ? <Tooltip title={text} placement="topLeft"><span>{text}</span></Tooltip>
       : <span style={{ color: '#ccc' }}>—</span>,
@@ -53,20 +56,21 @@ const columns: ColumnsType<ADUser> = [
     title: 'UID',
     dataIndex: 'uidNumber',
     key: 'uidNumber',
-    width: 70,
+    width: 80,
     render: (text: string) => text ? <span style={{ fontFamily: 'monospace' }}>{text}</span> : <span style={{ color: '#ccc' }}>—</span>,
   },
   {
     title: 'GID',
     dataIndex: 'gidNumber',
     key: 'gidNumber',
-    width: 70,
+    width: 80,
     render: (text: string) => text ? <span style={{ fontFamily: 'monospace' }}>{text}</span> : <span style={{ color: '#ccc' }}>—</span>,
   },
   {
     title: '状态',
     dataIndex: 'status',
     key: 'status',
+    width: 90,
     render: (status: ADUser['status']) => {
       const s = statusMap[status]
       return (
@@ -84,6 +88,7 @@ const columns: ColumnsType<ADUser> = [
     title: '最后登录',
     dataIndex: 'lastLogin',
     key: 'lastLogin',
+    width: 130,
     render: (text: string) => <span style={{ color: '#999', fontSize: 11 }}>{text}</span>,
   },
 ]
@@ -356,6 +361,7 @@ const UserSearch: React.FC = () => {
         { label: '已锁定', value: lockedCount },
       ]} />
       <Table
+        className="nowrap-table"
         rowKey="dn"
         columns={[...columns, {
           title: '操作', key: 'action', width: 80,
@@ -381,6 +387,7 @@ const UserSearch: React.FC = () => {
           },
         })}
         locale={{ emptyText: loading ? '加载中...' : '暂无用户，可输入关键词搜索' }}
+        scroll={{ x: 'max-content' }}
         pagination={users.length > 0 ? {
           defaultPageSize: 10,
           showSizeChanger: true,
