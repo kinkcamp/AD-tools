@@ -61,6 +61,16 @@ body {
   background: #e9eff8;
 }
 
+/* 全局禁止鼠标拖选文本（导航栏/标题等不该被选中），输入框内保留 */
+body {
+  user-select: none;
+  -webkit-user-select: none;
+}
+input, textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 /* 内容滚动区用 flex 纵向布局：表格容器撑满剩余高度，
    数据不满一屏时分页器也始终贴在滚动区底部，不会悬在表格正下方 */
 .page-scroll {

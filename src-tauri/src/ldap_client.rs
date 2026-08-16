@@ -41,6 +41,8 @@ pub struct ADUser {
     pub display_name: String,
     pub mail: String,
     pub department: String,
+    // 用户所在组（memberOf 提取组名，逗号分隔）
+    pub groups: String,
     pub status: String,
     pub last_login: String,
     // POSIX 属性（Identity Management for UNIX），未设置时为空字符串
@@ -184,16 +186,41 @@ impl LdapClient {
             .map(Self::uac_status)
             .unwrap_or("active");
 
+        // 部门 = 用户所在 OU/容器名称（department 属性普遍未填，按需求以 OU 为准）
+        let department = Self::container_name_from_dn(&se.dn);
+        // 所在组：memberOf 各 DN 取首个 RDN 的组名
+        let groups = se.attrs.get("memberOf").map(|vs| {
+            vs.iter().map(|dn| {
+                let rdn = dn.split(',').next().unwrap_or(dn);
+                rdn.splitn(2, '=').nth(1).unwrap_or(rdn)
+            }).collect::<Vec<_>>().join(", ")
+        }).unwrap_or_default();
+
         ADUser {
             dn: se.dn,
             s_am_account_name: se.attrs.get("sAMAccountName").and_then(|v| v.first()).cloned().unwrap_or_default(),
             display_name: se.attrs.get("displayName").and_then(|v| v.first()).cloned().unwrap_or_default(),
             mail: se.attrs.get("mail").and_then(|v| v.first()).cloned().unwrap_or_default(),
-            department: se.attrs.get("department").and_then(|v| v.first()).cloned().unwrap_or_default(),
+            department,
+            groups,
             status: status.to_string(),
             last_login: String::new(),
             uid_number: se.attrs.get("uidNumber").and_then(|v| v.first()).cloned().unwrap_or_default(),
             gid_number: se.attrs.get("gidNumber").and_then(|v| v.first()).cloned().unwrap_or_default(),
+        }
+    }
+
+    /// 从用户 DN 取父容器名称：CN=x,OU=EDA,DC=... → "EDA"；CN=x,CN=Users,... → "Users"
+    fn container_name_from_dn(dn: &str) -> String {
+        let mut parts = dn.split(',');
+        parts.next(); // 跳过用户自身的 CN
+        match parts.next() {
+            Some(p) => {
+                let p = p.trim();
+                if p.to_ascii_lowercase().starts_with("dc=") { return String::new(); }
+                p.splitn(2, '=').nth(1).unwrap_or(p).to_string()
+            }
+            None => String::new(),
         }
     }
 
@@ -203,7 +230,7 @@ impl LdapClient {
         lower.ends_with('$') || lower == "krbtgt" || lower == "guest"
     }
 
-    const USER_ATTRS: [&'static str; 7] = ["sAMAccountName", "displayName", "mail", "department", "userAccountControl", "uidNumber", "gidNumber"];
+    const USER_ATTRS: [&'static str; 8] = ["sAMAccountName", "displayName", "mail", "department", "userAccountControl", "uidNumber", "gidNumber", "memberOf"];
 
     pub async fn search_users(&self, keyword: &str) -> Result<Vec<ADUser>, String> {
         let (mut ldap, _) = self.connect().await?;

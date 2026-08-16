@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Table, Button, message, Popconfirm, Modal, Dropdown } from 'antd'
+import { Table, Button, message, Popconfirm, Modal, Dropdown, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import type { MenuProps } from 'antd'
 import TopBar from '../components/TopBar'
@@ -37,6 +37,16 @@ const columns: ColumnsType<ADUser> = [
     title: '部门',
     dataIndex: 'department',
     key: 'department',
+  },
+  {
+    title: '所在组',
+    dataIndex: 'groups',
+    key: 'groups',
+    width: 200,
+    ellipsis: true,
+    render: (text: string) => text
+      ? <Tooltip title={text} placement="topLeft"><span>{text}</span></Tooltip>
+      : <span style={{ color: '#ccc' }}>—</span>,
   },
   {
     title: 'UID',
@@ -203,13 +213,17 @@ const UserSearch: React.FC = () => {
 
   // 导出当前搜索结果为 CSV
   const handleExport = () => {
-    if (users.length === 0) {
+    // 有勾选时仅导出选中用户，未勾选时导出全部
+    const rows = selectedKeys.length > 0
+      ? users.filter(u => selectedKeys.includes(u.dn))
+      : users
+    if (rows.length === 0) {
       message.warning('没有可导出的数据')
       return
     }
-    const headers = ['sAMAccountName', 'displayName', 'mail', 'department', 'uidNumber', 'gidNumber', 'status', 'dn']
-    const lines = users.map(u => [
-      u.sAMAccountName, u.displayName, u.mail, u.department,
+    const headers = ['sAMAccountName', 'displayName', 'mail', 'department', 'groups', 'uidNumber', 'gidNumber', 'status', 'dn']
+    const lines = rows.map(u => [
+      u.sAMAccountName, u.displayName, u.mail, u.department, u.groups,
       u.uidNumber, u.gidNumber,
       statusMap[u.status]?.label || u.status, u.dn,
     ].map(csvCell).join(','))
@@ -220,7 +234,7 @@ const UserSearch: React.FC = () => {
     a.download = `users_${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
     URL.revokeObjectURL(url)
-    message.success(`已导出 ${users.length} 条记录`)
+    message.success(`已导出 ${rows.length} 条记录${selectedKeys.length > 0 ? '（选中）' : ''}`)
   }
 
   // 批量删除选中用户（二次确认 + 逐个执行）

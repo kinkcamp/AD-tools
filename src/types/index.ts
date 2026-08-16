@@ -4,6 +4,7 @@ export interface ADUser {
   displayName: string
   mail: string
   department: string
+  groups: string
   status: 'active' | 'disabled' | 'locked'
   lastLogin: string
   uidNumber: string
