@@ -20,6 +20,25 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
   const strengthLabels = ['', '弱', '中', '强']
   const strengthColors = ['', '#dc2626', '#d97706', '#16a34a']
 
+  // 生成满足 AD 复杂度要求的 12 位随机密码（大小写+数字+符号，避开易混淆字符）
+  const genRandomPassword = () => {
+    const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
+    const lower = 'abcdefghijkmnpqrstuvwxyz'
+    const digits = '23456789'
+    const symbols = '!@#$%^&*'
+    const all = upper + lower + digits + symbols
+    const pick = (s: string) => s[Math.floor(Math.random() * s.length)]
+    const chars = [pick(upper), pick(lower), pick(digits), pick(symbols)]
+    while (chars.length < 12) chars.push(pick(all))
+    for (let i = chars.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [chars[i], chars[j]] = [chars[j], chars[i]]
+    }
+    const pwd = chars.join('')
+    setPassword(pwd)
+    setConfirmPassword(pwd)
+  }
+
   const handleConfirm = () => {
     if (!password) {
       message.error('请输入新密码')
@@ -61,10 +80,11 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
           <label style={{ display: 'block', fontSize: 11, color: '#666', marginBottom: 5, fontWeight: 500 }}>确认密码</label>
           <Input.Password value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
         </div>
-        <div style={{ marginBottom: 10 }}>
+        <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Checkbox checked={forceChange} onChange={(e) => setForceChange(e.target.checked)}>
             <span style={{ fontSize: 12 }}>强制下次登录修改</span>
           </Checkbox>
+          <Button size="small" onClick={genRandomPassword} style={{ fontSize: 12 }}>随机密码</Button>
         </div>
       </div>
     </Modal>

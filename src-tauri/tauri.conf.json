@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicegui/nicegui/main/tauri/schema.json",
   "productName": "AD域控助手",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "identifier": "com.adtools.assistant",
   "build": {
     "frontendDist": "../dist",
