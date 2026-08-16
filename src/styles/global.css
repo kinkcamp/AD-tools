@@ -53,6 +53,14 @@ body {
   margin-right: auto;
 }
 
+/* 表格选中行用淡色（antd 默认蓝偏重），悬停时略深一点 */
+.ant-table-tbody > tr.ant-table-row-selected > td {
+  background: #f2f6fc;
+}
+.ant-table-tbody > tr.ant-table-row-selected:hover > td {
+  background: #e9eff8;
+}
+
 /* 内容滚动区用 flex 纵向布局：表格容器撑满剩余高度，
    数据不满一屏时分页器也始终贴在滚动区底部，不会悬在表格正下方 */
 .page-scroll {

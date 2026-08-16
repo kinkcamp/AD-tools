@@ -5,7 +5,7 @@ import { tauriService } from '../services/tauri'
 const navConfig = [
   {
     group: '用户管理',
-    items: [{ key: '/', label: '搜索用户', icon: '⌕' }],
+    items: [{ key: '/', label: '用户中心', icon: '⌕' }],
   },
   {
     group: '批量操作',

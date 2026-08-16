@@ -270,7 +270,7 @@ const UserSearch: React.FC = () => {
   return (
   <>
     <TopBar
-      title="搜索用户"
+      title="用户中心"
       actions={
         <>
           <Button size="small" onClick={handleExport} disabled={users.length === 0}>导出</Button>
