@@ -61,12 +61,17 @@ body {
   background: #e9eff8;
 }
 
-/* 全局禁止鼠标拖选文本（导航栏/标题等不该被选中），输入框内保留 */
+/* 全局禁止鼠标拖选文本（导航栏/标题等不该被选中），输入框内保留；
+   表格单元格允许选中单个内容（配合 JS 限制不可跨单元格多选） */
 body {
   user-select: none;
   -webkit-user-select: none;
 }
 input, textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+td.ant-table-cell {
   user-select: text;
   -webkit-user-select: text;
 }

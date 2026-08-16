@@ -15,7 +15,27 @@ const App: React.FC = () => {
   useEffect(() => {
     const handler = (e: MouseEvent) => e.preventDefault()
     document.addEventListener('contextmenu', handler)
-    return () => document.removeEventListener('contextmenu', handler)
+
+    // 文本选中限制：只允许在单个表格单元格内选中，
+    // 跨单元格/跨元素的拖选一旦产生立即收起，避免大段误选
+    const cellOf = (node: Node | null): Element | null => {
+      const el = node instanceof Element ? node : node?.parentElement ?? null
+      return el?.closest('td.ant-table-cell') ?? null
+    }
+    const onSelectionChange = () => {
+      const sel = window.getSelection()
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return
+      const range = sel.getRangeAt(0)
+      const startCell = cellOf(range.startContainer)
+      const endCell = cellOf(range.endContainer)
+      if (!startCell || !endCell || startCell !== endCell) sel.collapseToStart()
+    }
+    document.addEventListener('selectionchange', onSelectionChange)
+
+    return () => {
+      document.removeEventListener('contextmenu', handler)
+      document.removeEventListener('selectionchange', onSelectionChange)
+    }
   }, [])
 
   return (
