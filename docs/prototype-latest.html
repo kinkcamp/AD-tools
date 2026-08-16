@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AD域控助手 - 最新原型图（v1.0.0 当前版本）</title>
+<title>AD域控助手 - 最新原型图（v1.0.10 当前版本）</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif; background: #e8eaed; color: #1a1a1a; padding-bottom: 70px; }
@@ -63,8 +63,10 @@
   .table-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
   table { width: 100%; border-collapse: collapse; font-size: 12px; }
   th { text-align: left; padding: 8px 10px; color: #888; font-weight: 500; font-size: 11px; border-bottom: 1px solid #eee; background: #fff; }
-  td { padding: 8px 10px; border-bottom: 1px solid #f5f5f5; }
+  td { padding: 8px 10px; border-bottom: 1px solid #f5f5f5; white-space: nowrap; }
   tr:hover td { background: #fafafa; }
+  tr.selected td { background: #f2f6fc; } /* 选中行淡色 */
+  tr.selected:hover td { background: #e9eff8; }
   .uname { font-weight: 600; }
   .mono { font-family: 'SF Mono', Menlo, monospace; }
   .dim { color: #ccc; }
@@ -75,6 +77,19 @@
 
   /* ===== 分页条（40px，与侧边栏 footer 等高）===== */
   .pagination { height: 40px; border-top: 1px solid #f0f0f0; background: #fff; display: flex; align-items: center; flex-shrink: 0; }
+  /* 横向滚动条：常驻显示，紧贴分页器上方 */
+  .hscroll { height: 8px; background: #fafafa; border-radius: 4px; flex-shrink: 0; }
+  .hscroll-thumb { width: 32%; height: 100%; background: #d0d0d0; border-radius: 4px; }
+
+  /* ===== 用户中心：OU 树面板 ===== */
+  .content-uc { flex: 1; display: flex; overflow: hidden; }
+  .ou-tree { width: 220px; flex-shrink: 0; margin: 16px 0 16px 16px; background: #fff; border: 1px solid #f0f0f0; border-radius: 8px; padding: 8px 4px; overflow-y: auto; }
+  .ou-tree-title { font-size: 11px; color: #999; padding: 2px 12px 8px; }
+  .tree-node { display: flex; align-items: center; gap: 4px; padding: 4px 8px; font-size: 12px; border-radius: 4px; cursor: pointer; }
+  .tree-node:hover { background: #f5f5f5; }
+  .tree-node.selected { background: #e6f0ff; color: #2563eb; }
+  .tree-caret { width: 12px; color: #999; font-size: 10px; }
+  .user-center-main { flex: 1; min-width: 0; padding: 16px; display: flex; flex-direction: column; overflow: hidden; }
   .pg-total { margin-right: auto; font-size: 11px; color: #666; }
   .pg-item { min-width: 24px; height: 24px; padding: 0 6px; border: 1px solid #d9d9d9; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 11px; margin-left: 6px; cursor: pointer; background: #fff; }
   .pg-item.current { border-color: #2563eb; color: #2563eb; }
@@ -99,6 +114,12 @@
   .add-label { font-size: 11px; color: #666; font-weight: 500; margin-bottom: 6px; }
   .hint { font-size: 10px; color: #999; margin-top: 6px; }
 
+  /* ===== 修改密码弹窗 ===== */
+  .pwd-strength { display: flex; gap: 4px; align-items: center; margin-top: 6px; }
+  .pwd-bar { width: 60px; height: 4px; background: #eee; border-radius: 2px; overflow: hidden; }
+  .pwd-bar-fill { width: 100%; height: 100%; background: #16a34a; }
+  .pwd-row-split { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; }
+
   /* ===== 批量创建页 ===== */
   .steps { display: flex; gap: 0; margin-bottom: 16px; }
   .step { flex: 1; display: flex; align-items: center; gap: 8px; font-size: 12px; color: #999; }
@@ -120,9 +141,9 @@
 </head>
 <body>
 
-<div class="proto-note">原型图 · AD域控助手 v1.0.0（与当前发布版本一致）· 浅色简约风 · 关键规格：TopBar/Logo 区 64px，分页条/状态栏 40px，搜索栏边距 18px</div>
+<div class="proto-note">原型图 · AD域控助手 v1.0.10（与当前发布版本一致）· 浅色简约风 · 关键规格：TopBar/Logo 区 64px，分页条/状态栏 40px，搜索栏边距 18px · 用户中心左侧 OU 树（默认折叠）· 表格单元格单行+横向滚动条常驻 · 全局禁右键/禁拖选（表格单元格内可单选）</div>
 
-<!-- ============ 屏幕 1：用户搜索（默认态） ============ -->
+<!-- ============ 屏幕 1：用户中心（OU 树 + 表格，默认态） ============ -->
 <div class="screen active" id="s1">
   <div class="app-shell">
     <div class="sidebar">
@@ -130,7 +151,7 @@
       <div class="sidebar-nav">
         <div class="nav-group">
           <div class="nav-group-title">用户管理</div>
-          <div class="nav-item active"><span class="icon">⌕</span>搜索用户</div>
+          <div class="nav-item active"><span class="icon">⌕</span>用户中心</div>
         </div>
         <div class="nav-group">
           <div class="nav-group-title">批量操作</div>
@@ -149,45 +170,60 @@
     </div>
     <div class="main">
       <div class="topbar">
-        <div class="topbar-title">搜索用户</div>
+        <div class="topbar-title">用户中心</div>
         <div class="topbar-actions"><button class="btn btn-sm">导出</button><button class="btn btn-sm" style="color:#dc2626">批量删除</button></div>
       </div>
       <div class="searchbar">
-        <div class="search-input">搜索用户名、姓名、邮箱、部门...</div>
+        <div class="search-input">搜索用户名、姓名、邮箱...</div>
         <button class="btn btn-primary">搜索</button>
       </div>
-      <div class="content">
-        <div class="stats">
-          <div class="stat-card"><div class="stat-label">搜索结果</div><div class="stat-value">97</div></div>
-          <div class="stat-card"><div class="stat-label">活跃</div><div class="stat-value" style="color:#16a34a">91</div></div>
-          <div class="stat-card"><div class="stat-label">已禁用</div><div class="stat-value" style="color:#dc2626">6</div></div>
-          <div class="stat-card"><div class="stat-label">已锁定</div><div class="stat-value" style="color:#d97706">0</div></div>
+      <div class="content-uc">
+        <!-- 左侧 OU 树：全域 OU/容器，默认折叠，点选过滤右侧用户 -->
+        <div class="ou-tree">
+          <div class="ou-tree-title">组织单元</div>
+          <div class="tree-node selected"><span class="tree-caret">▾</span>sirrr.cn</div>
+          <div style="padding-left:18px">
+            <div class="tree-node"><span class="tree-caret">▸</span>Builtin</div>
+            <div class="tree-node"><span class="tree-caret">▸</span>Computers</div>
+            <div class="tree-node"><span class="tree-caret">▸</span>Domain Controllers</div>
+            <div class="tree-node"><span class="tree-caret">▸</span>EDA</div>
+            <div class="tree-node"><span class="tree-caret">▸</span>Users</div>
+          </div>
         </div>
-        <div class="table-wrap">
-          <table>
-            <tr><th style="width:28px"></th><th>用户名</th><th>姓名</th><th>邮箱</th><th>部门</th><th style="width:60px">UID</th><th style="width:60px">GID</th><th>状态</th><th>最后登录</th><th style="width:60px">操作</th></tr>
-            <tr><td><input type="checkbox"></td><td class="uname">zhaolei1</td><td>赵磊</td><td>zhaolei1@sirrr.cn</td><td></td><td class="dim">—</td><td class="dim">—</td><td><span class="pill pill-active">活跃</span></td><td class="muted">-</td><td><button class="btn btn-danger-text btn-sm">删除</button></td></tr>
-            <tr style="background:#f0f6ff"><td><input type="checkbox"></td><td class="uname">sunyue1</td><td>孙悦</td><td>sunyue1@sirrr.cn</td><td></td><td class="dim">—</td><td class="dim">—</td><td><span class="pill pill-active">活跃</span></td><td class="muted">-</td><td><button class="btn btn-danger-text btn-sm">删除</button></td></tr>
-            <tr><td><input type="checkbox"></td><td class="uname">qianbin1</td><td>钱斌</td><td>qianbin1@sirrr.cn</td><td></td><td class="dim">—</td><td class="dim">—</td><td><span class="pill pill-active">活跃</span></td><td class="muted">-</td><td><button class="btn btn-danger-text btn-sm">删除</button></td></tr>
-            <tr><td><input type="checkbox"></td><td class="uname">zhoujing1</td><td>周静</td><td>zhoujing1@sirrr.cn</td><td></td><td class="dim">—</td><td class="dim">—</td><td><span class="pill pill-active">活跃</span></td><td class="muted">-</td><td><button class="btn btn-danger-text btn-sm">删除</button></td></tr>
-            <tr><td><input type="checkbox"></td><td class="uname">wuqiang1</td><td>吴强</td><td>wuqiang1@sirrr.cn</td><td></td><td class="dim">—</td><td class="dim">—</td><td><span class="pill pill-active">活跃</span></td><td class="muted">-</td><td><button class="btn btn-danger-text btn-sm">删除</button></td></tr>
-            <tr><td><input type="checkbox"></td><td class="uname">zhengxiu1</td><td>郑秀英</td><td>zhengxiu1@sirrr.cn</td><td></td><td class="dim">—</td><td class="dim">—</td><td><span class="pill pill-active">活跃</span></td><td class="muted">-</td><td><button class="btn btn-danger-text btn-sm">删除</button></td></tr>
+        <div class="user-center-main">
+        <div class="stats">
+          <div class="stat-card"><div class="stat-label">搜索结果</div><div class="stat-value">1013</div></div>
+          <div class="stat-card"><div class="stat-label">活跃</div><div class="stat-value" style="color:#16a34a">998</div></div>
+          <div class="stat-card"><div class="stat-label">已禁用</div><div class="stat-value" style="color:#dc2626">13</div></div>
+          <div class="stat-card"><div class="stat-label">已锁定</div><div class="stat-value" style="color:#d97706">2</div></div>
+        </div>
+        <div class="table-wrap" style="overflow-x:auto">
+          <table style="min-width:1130px">
+            <tr><th style="width:28px"></th><th style="width:120px">用户名</th><th style="width:110px">姓名</th><th style="width:210px">邮箱</th><th style="width:110px">部门</th><th style="width:220px">所在组</th><th style="width:80px">UID</th><th style="width:80px">GID</th><th style="width:90px">状态</th><th style="width:130px">最后登录</th><th style="width:80px">操作</th></tr>
+            <tr><td><input type="checkbox"></td><td class="uname">zhaolei1</td><td>赵磊</td><td>zhaolei1@sirrr.cn</td><td>EDA</td><td>Domain Users</td><td class="mono">10021</td><td class="mono">10021</td><td><span class="pill pill-active">活跃</span></td><td class="muted">-</td><td><button class="btn btn-danger-text btn-sm">删除</button></td></tr>
+            <tr class="selected"><td><input type="checkbox" checked></td><td class="uname">sunyue1</td><td>孙悦</td><td>sunyue1@sirrr.cn</td><td>IT</td><td>Domain Users, IT-Staff</td><td class="mono">10023</td><td class="mono">10023</td><td><span class="pill pill-active">活跃</span></td><td class="muted">-</td><td><button class="btn btn-danger-text btn-sm">删除</button></td></tr>
+            <tr><td><input type="checkbox"></td><td class="uname">qianbin1</td><td>钱斌</td><td>qianbin1@sirrr.cn</td><td>HR</td><td>Domain Users</td><td class="dim">—</td><td class="dim">—</td><td><span class="pill pill-active">活跃</span></td><td class="muted">-</td><td><button class="btn btn-danger-text btn-sm">删除</button></td></tr>
+            <tr><td><input type="checkbox"></td><td class="uname">zhoujing1</td><td>周静</td><td>zhoujing1@sirrr.cn</td><td>OPC</td><td>Domain Users</td><td class="dim">—</td><td class="dim">—</td><td><span class="pill pill-disabled">已禁用</span></td><td class="muted">2026-08-01 09:12</td><td><button class="btn btn-danger-text btn-sm">删除</button></td></tr>
+            <tr><td><input type="checkbox"></td><td class="uname">wuqiang1</td><td>吴强</td><td>wuqiang1@sirrr.cn</td><td>PET</td><td>Domain Users</td><td class="dim">—</td><td class="dim">—</td><td><span class="pill pill-active">活跃</span></td><td class="muted">-</td><td><button class="btn btn-danger-text btn-sm">删除</button></td></tr>
+            <tr><td><input type="checkbox"></td><td class="uname">zhengxiu1</td><td>郑秀英</td><td>zhengxiu1@sirrr.cn</td><td>EDA</td><td>Domain Users</td><td class="dim">—</td><td class="dim">—</td><td><span class="pill pill-active">活跃</span></td><td class="muted">-</td><td><button class="btn btn-danger-text btn-sm">删除</button></td></tr>
           </table>
+        </div>
+        <div class="hscroll"><div class="hscroll-thumb"></div></div>
           <div class="pagination">
-            <div class="pg-total">显示 1-10 / 共 97 条</div>
+            <div class="pg-total">显示 1-10 / 共 1013 条</div>
             <div class="pg-item" style="color:#bbb">‹</div>
-            <div class="pg-item current">1</div><div class="pg-item">2</div><div class="pg-item">3</div><div class="pg-item">4</div><div class="pg-item">5</div><div class="pg-item">…</div><div class="pg-item">10</div>
+            <div class="pg-item current">1</div><div class="pg-item">2</div><div class="pg-item">3</div><div class="pg-item">4</div><div class="pg-item">5</div><div class="pg-item">…</div><div class="pg-item">102</div>
             <div class="pg-item" style="color:#333">›</div>
             <select class="pg-size"><option>10 条/页</option><option>20 条/页</option><option>50 条/页</option><option>100 条/页</option></select>
           </div>
-        </div>
         <!-- 右键菜单（在"孙悦"行上右键的效果） -->
-        <div class="ctx-menu" style="left: 340px; top: 172px;">
+        <div class="ctx-menu" style="left: 420px; top: 190px;">
           <div class="ctx-item">禁用账户</div>
           <div class="ctx-item">修改密码</div>
           <div class="ctx-item">编辑属性 / 添加属性</div>
           <div class="ctx-divider"></div>
           <div class="ctx-item danger">删除用户</div>
+        </div>
         </div>
       </div>
     </div>
@@ -200,14 +236,14 @@
     <div class="sidebar">
       <div class="sidebar-logo"><div class="logo-icon">AD</div><div class="logo-text">域控助手</div></div>
       <div class="sidebar-nav">
-        <div class="nav-group"><div class="nav-group-title">用户管理</div><div class="nav-item active"><span class="icon">⌕</span>搜索用户</div></div>
+        <div class="nav-group"><div class="nav-group-title">用户管理</div><div class="nav-item active"><span class="icon">⌕</span>用户中心</div></div>
         <div class="nav-group"><div class="nav-group-title">批量操作</div><div class="nav-item"><span class="icon">+</span>批量创建用户</div><div class="nav-item"><span class="icon">⚿</span>批量修改密码</div><div class="nav-item"><span class="icon">⊞</span>批量加入组</div><div class="nav-item"><span class="icon">✎</span>批量修改属性</div></div>
         <div class="nav-group"><div class="nav-group-title">系统</div><div class="nav-item"><span class="icon">⚙</span>连接设置</div><div class="nav-item"><span class="icon">☰</span>操作日志</div></div>
       </div>
       <div class="sidebar-footer"><div class="ssl-badge"><div class="ssl-dot"></div>SSL 已连接</div></div>
     </div>
     <div class="main">
-      <div class="topbar"><div class="topbar-title">搜索用户</div></div>
+      <div class="topbar"><div class="topbar-title">用户中心</div></div>
       <div class="content" style="padding:0">
         <div class="modal-mask">
           <div class="modal">
@@ -236,13 +272,49 @@
   </div>
 </div>
 
+<!-- ============ 屏幕 2.5：修改密码弹窗（双击行打开，含随机密码按钮） ============ -->
+<div class="screen" id="s25">
+  <div class="app-shell">
+    <div class="sidebar">
+      <div class="sidebar-logo"><div class="logo-icon">AD</div><div class="logo-text">域控助手</div></div>
+      <div class="sidebar-nav">
+        <div class="nav-group"><div class="nav-group-title">用户管理</div><div class="nav-item active"><span class="icon">⌕</span>用户中心</div></div>
+        <div class="nav-group"><div class="nav-group-title">批量操作</div><div class="nav-item"><span class="icon">+</span>批量创建用户</div><div class="nav-item"><span class="icon">⚿</span>批量修改密码</div><div class="nav-item"><span class="icon">⊞</span>批量加入组</div><div class="nav-item"><span class="icon">✎</span>批量修改属性</div></div>
+        <div class="nav-group"><div class="nav-group-title">系统</div><div class="nav-item"><span class="icon">⚙</span>连接设置</div><div class="nav-item"><span class="icon">☰</span>操作日志</div></div>
+      </div>
+      <div class="sidebar-footer"><div class="ssl-badge"><div class="ssl-dot"></div>SSL 已连接</div></div>
+    </div>
+    <div class="main">
+      <div class="topbar"><div class="topbar-title">用户中心</div></div>
+      <div class="content" style="padding:0">
+        <div class="modal-mask">
+          <div class="modal" style="width:480px">
+            <div class="modal-title">修改密码 — sunyue1 (孙悦)</div>
+            <div class="form-row"><label class="form-label">新密码</label><input class="form-input" type="password" value="K7m#pQ2xRw9!">
+              <div class="pwd-strength"><div class="pwd-bar"><div class="pwd-bar-fill"></div></div><span style="font-size:10px;color:#16a34a">强</span></div>
+            </div>
+            <div class="form-row"><label class="form-label">确认密码</label><input class="form-input" type="password" value="K7m#pQ2xRw9!"></div>
+            <!-- 复选框与随机密码按钮同行左右分布 -->
+            <div class="pwd-row-split">
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#555"><input type="checkbox" checked>强制下次登录修改</label>
+              <button class="btn btn-sm">随机密码</button>
+            </div>
+            <div class="hint">随机密码为 12 位，包含大小写字母/数字/符号，满足 AD 复杂度策略，避开易混淆字符</div>
+            <div class="modal-footer"><button class="btn">取消</button><button class="btn btn-primary">确认修改</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ============ 屏幕 3：批量创建用户 ============ -->
 <div class="screen" id="s3">
   <div class="app-shell">
     <div class="sidebar">
       <div class="sidebar-logo"><div class="logo-icon">AD</div><div class="logo-text">域控助手</div></div>
       <div class="sidebar-nav">
-        <div class="nav-group"><div class="nav-group-title">用户管理</div><div class="nav-item"><span class="icon">⌕</span>搜索用户</div></div>
+        <div class="nav-group"><div class="nav-group-title">用户管理</div><div class="nav-item"><span class="icon">⌕</span>用户中心</div></div>
         <div class="nav-group"><div class="nav-group-title">批量操作</div><div class="nav-item active"><span class="icon">+</span>批量创建用户</div><div class="nav-item"><span class="icon">⚿</span>批量修改密码</div><div class="nav-item"><span class="icon">⊞</span>批量加入组</div><div class="nav-item"><span class="icon">✎</span>批量修改属性</div></div>
         <div class="nav-group"><div class="nav-group-title">系统</div><div class="nav-item"><span class="icon">⚙</span>连接设置</div><div class="nav-item"><span class="icon">☰</span>操作日志</div></div>
       </div>
@@ -280,7 +352,7 @@
     <div class="sidebar">
       <div class="sidebar-logo"><div class="logo-icon">AD</div><div class="logo-text">域控助手</div></div>
       <div class="sidebar-nav">
-        <div class="nav-group"><div class="nav-group-title">用户管理</div><div class="nav-item"><span class="icon">⌕</span>搜索用户</div></div>
+        <div class="nav-group"><div class="nav-group-title">用户管理</div><div class="nav-item"><span class="icon">⌕</span>用户中心</div></div>
         <div class="nav-group"><div class="nav-group-title">批量操作</div><div class="nav-item"><span class="icon">+</span>批量创建用户</div><div class="nav-item"><span class="icon">⚿</span>批量修改密码</div><div class="nav-item"><span class="icon">⊞</span>批量加入组</div><div class="nav-item"><span class="icon">✎</span>批量修改属性</div></div>
         <div class="nav-group"><div class="nav-group-title">系统</div><div class="nav-item"><span class="icon">⚙</span>连接设置</div><div class="nav-item active"><span class="icon">☰</span>操作日志</div></div>
       </div>
@@ -319,7 +391,7 @@
     <div class="sidebar">
       <div class="sidebar-logo"><div class="logo-icon">AD</div><div class="logo-text">域控助手</div></div>
       <div class="sidebar-nav">
-        <div class="nav-group"><div class="nav-group-title">用户管理</div><div class="nav-item"><span class="icon">⌕</span>搜索用户</div></div>
+        <div class="nav-group"><div class="nav-group-title">用户管理</div><div class="nav-item"><span class="icon">⌕</span>用户中心</div></div>
         <div class="nav-group"><div class="nav-group-title">批量操作</div><div class="nav-item"><span class="icon">+</span>批量创建用户</div><div class="nav-item"><span class="icon">⚿</span>批量修改密码</div><div class="nav-item"><span class="icon">⊞</span>批量加入组</div><div class="nav-item"><span class="icon">✎</span>批量修改属性</div></div>
         <div class="nav-group"><div class="nav-group-title">系统</div><div class="nav-item active"><span class="icon">⚙</span>连接设置</div><div class="nav-item"><span class="icon">☰</span>操作日志</div></div>
       </div>
@@ -345,8 +417,9 @@
 </div>
 
 <div class="proto-nav">
-  <button class="active" onclick="show('s1',this)">用户搜索 + 右键菜单</button>
+  <button class="active" onclick="show('s1',this)">用户中心 + OU 树 + 右键菜单</button>
   <button onclick="show('s2',this)">属性编辑弹窗</button>
+  <button onclick="show('s25',this)">修改密码弹窗</button>
   <button onclick="show('s3',this)">批量创建用户</button>
   <button onclick="show('s4',this)">操作日志</button>
   <button onclick="show('s5',this)">连接设置</button>
