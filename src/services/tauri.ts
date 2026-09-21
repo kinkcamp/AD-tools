@@ -52,6 +52,4 @@ export const tauriService = {
 
   // File parsing
   parseFile: (path: string) => invoke<ParseResult>('parse_file', { path }),
-  generateTemplate: (format: string, path: string) =>
-    invoke<void>('generate_template', { format, path }),
 }

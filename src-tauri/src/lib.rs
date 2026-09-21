@@ -193,14 +193,6 @@ fn parse_file(path: String) -> Result<file_parser::ParseResult, String> {
     }
 }
 
-#[tauri::command]
-fn generate_template(format: String, path: String) -> Result<(), String> {
-    match format.as_str() {
-        "csv" => file_parser::generate_csv_template(&path),
-        _ => Err("不支持的模板格式".to_string()),
-    }
-}
-
 /// Windows 11 窗口默认不给第三方框架（如 WebView2）自动圆角，
 /// 需显式调用 DWM API 选择圆角；Win10/Server 2022 不支持该属性，调用返回错误直接忽略
 #[cfg(target_os = "windows")]
@@ -263,7 +255,6 @@ pub fn run() {
             modify_user_attributes,
             get_operation_logs,
             parse_file,
-            generate_template,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
