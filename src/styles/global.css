@@ -28,10 +28,18 @@ body {
 
 #root { width: 100vw; height: 100vh; overflow: hidden; }
 
-::-webkit-scrollbar { width: 6px; }
+/* 禁止滚动链与弹性过滚：内部滚动区到边后手势不再传给 WebView 根滚动视图，
+   整页不会跟着被"拖动"/橡皮筋回弹（macOS WKWebView 默认行为） */
+html, body { overscroll-behavior: none; }
+.page-scroll, .ou-tree-panel, .ant-table-body, .ant-table-content {
+  overscroll-behavior: contain;
+}
+
+/* 全应用统一滚动条样式：8px 粗、浅灰圆角拇指、透明轨道 */
+::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #d0d0d0; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #bbb; }
+::-webkit-scrollbar-thumb { background: #d0d0d0; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #b5b5b5; }
 
 /* 分页器固定在页面滚动区最底部，与侧边栏底部状态栏（SSL 已连接，40px）
    处于同一水平线：负外边距穿透内容区 16px 内边距并横向撑满，内部内容保持对齐；
@@ -97,6 +105,38 @@ td.ant-table-cell {
   border-radius: 8px;
   padding: 8px 4px;
   overflow-y: auto;
+  overflow-x: hidden;
+}
+/* OU 树：主色为近黑，antd 选中/悬停底会派生成深灰一坨、文字看不清。
+   这里覆盖为浅灰底 + 深色字，并让节点标题单行省略，避免长名换行 */
+.ou-tree-panel .ant-tree {
+  background: transparent;
+  font-size: 12.5px;
+}
+.ou-tree-panel .ant-tree .ant-tree-node-content-wrapper.ant-tree-node-selected {
+  background: #ececec;
+  color: #1a1a1a;
+}
+.ou-tree-panel .ant-tree .ant-tree-node-content-wrapper:hover {
+  background: #f5f5f5;
+}
+.ou-tree-panel .ant-tree .ant-tree-node-content-wrapper.ant-tree-node-selected:hover {
+  background: #ececec;
+}
+.ou-tree-panel .ant-tree .ant-tree-title {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 节点行必须限宽、wrapper 可收缩，title 的省略号才有参照；
+   否则长名撑出面板横向滚动条，出现全应用独一份的滚动条 */
+.ou-tree-panel .ant-tree .ant-tree-treenode {
+  width: 100%;
+}
+.ou-tree-panel .ant-tree .ant-tree-node-content-wrapper {
+  flex: 1;
+  min-width: 0;
 }
 .user-center-main {
   flex: 1;
@@ -105,31 +145,38 @@ td.ant-table-cell {
   display: flex;
   flex-direction: column;
 }
+/* 内容区整条底部栏：横跨 OU 树 + 表格全宽，与侧边栏 SSL 状态栏同高（40px）、
+   同色上边框对齐，二者拼成一条连续的底栏 */
+.content-footer-bar {
+  flex-shrink: 0;
+  height: 40px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  background: #fff;
+  border-top: 1px solid #eee;
+}
+.content-footer-bar .footer-total {
+  margin-right: auto;
+  font-size: 12px;
+  color: #666;
+}
+/* 统计卡片：可点击时作为筛选器，选中态浅灰底 */
+.stat-card { background: #fff; }
+.stat-card.clickable { cursor: pointer; transition: background 0.1s; }
+.stat-card.clickable:hover { background: #fafafa; }
+.stat-card.active { background: #f0f0f0; }
 /* 用户中心表格：单元格文字强制单行不换行，
    内容超宽时由表格底部横向滚动条查看 */
 .nowrap-table .ant-table-cell {
   white-space: nowrap;
 }
-/* 横向滚动条常驻显示（覆盖 macOS 悬停才浮现的 overlay 样式），
-   紧贴在底部分页器上方 */
+/* 表格横向滚动条常驻显示（覆盖 macOS 悬停才浮现的 overlay 样式），
+   紧贴在底部分页器上方；外观沿用全局统一样式 */
 .nowrap-table .ant-table-content::-webkit-scrollbar,
 .nowrap-table .ant-table-body::-webkit-scrollbar {
-  height: 8px;
-  width: 8px;
   display: block;
-}
-.nowrap-table .ant-table-content::-webkit-scrollbar-thumb,
-.nowrap-table .ant-table-body::-webkit-scrollbar-thumb {
-  background: #d0d0d0;
-  border-radius: 4px;
-}
-.nowrap-table .ant-table-content::-webkit-scrollbar-thumb:hover,
-.nowrap-table .ant-table-body::-webkit-scrollbar-thumb:hover {
-  background: #b5b5b5;
-}
-.nowrap-table .ant-table-content::-webkit-scrollbar-track,
-.nowrap-table .ant-table-body::-webkit-scrollbar-track {
-  background: #fafafa;
 }
 .page-scroll > .ant-table-wrapper,
 .user-center-main > .ant-table-wrapper {
@@ -147,4 +194,33 @@ td.ant-table-cell {
 }
 .page-scroll .ant-spin-container > .ant-table {
   flex: 1;
+}
+/* 用户中心表格：设置 scroll.y 后 antd 拆分表头/表体，
+   这里用 flex 让表体占满剩余高度并在内部垂直滚动（覆盖 antd 内联 max-height），
+   横向滚动条随之固定在表体底部、紧贴分页栏上方 */
+.user-center-main .ant-table {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+/* flex 纵向链上每一环都必须 min-height:0，否则 min-height:auto 会按内容撑高、
+   表体永远滚不动 */
+.user-center-main > .ant-table-wrapper > .ant-spin-nested-loading,
+.user-center-main .ant-spin-container {
+  min-height: 0;
+}
+.user-center-main .ant-table-container {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.user-center-main .ant-table-header {
+  flex: none;
+}
+.user-center-main .ant-table-body {
+  flex: 1;
+  min-height: 0;
+  max-height: none !important;
+  overflow: auto;
 }

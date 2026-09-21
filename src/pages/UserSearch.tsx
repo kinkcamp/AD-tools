@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Table, Button, message, Popconfirm, Modal, Dropdown, Tooltip, Tree } from 'antd'
+import { Table, Button, message, Popconfirm, Modal, Dropdown, Tooltip, Tree, Pagination } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import type { DataNode } from 'antd/es/tree'
 import type { MenuProps } from 'antd'
@@ -112,6 +112,11 @@ const UserSearch: React.FC = () => {
   const [ouTree, setOuTree] = useState<OuNode | null>(null)
   const [currentOu, setCurrentOu] = useState<string | null>(null)
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([])
+  // 分页：手动切片，分页器渲染在内容区底部整条 footer 栏中
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  // 状态筛选：点统计卡片过滤列表（再次点击或点"搜索结果"取消）
+  const [statusFilter, setStatusFilter] = useState<ADUser['status'] | null>(null)
 
   // 进入页面自动加载：全域用户 + OU 树（系统内置账户已由后端排除）
   useEffect(() => {
@@ -128,7 +133,11 @@ const UserSearch: React.FC = () => {
         if (!cancelled) {
           setUsers(result)
           setOuTree(tree)
-          if (tree) setCurrentOu(tree.dn)
+          if (tree) {
+            setCurrentOu(tree.dn)
+            // 默认只展开一级：根节点展开、其子节点折叠
+            setExpandedKeys([tree.dn])
+          }
         }
       } catch {
         // 连接失败时静默处理，由侧边栏状态与手动搜索提示覆盖
@@ -144,6 +153,7 @@ const UserSearch: React.FC = () => {
   const handleSelectOu = async (dn: string) => {
     setCurrentOu(dn)
     setSelectedKeys([])
+    setPage(1)
     setLoading(true)
     try {
       const config = await tauriService.getConfig()
@@ -179,6 +189,7 @@ const UserSearch: React.FC = () => {
       const result = await tauriService.searchUsers(config, keyword)
       setUsers(result)
       setSelectedKeys([])
+      setPage(1)
       if (result.length === 0) message.info('未找到匹配的用户')
     } catch (err) {
       message.error(`搜索失败: ${err instanceof Error ? err.message : String(err)}`)
@@ -254,10 +265,10 @@ const UserSearch: React.FC = () => {
 
   // 导出当前搜索结果为 CSV
   const handleExport = () => {
-    // 有勾选时仅导出选中用户，未勾选时导出全部
+    // 有勾选时仅导出选中用户，未勾选时导出当前筛选后的全部
     const rows = selectedKeys.length > 0
-      ? users.filter(u => selectedKeys.includes(u.dn))
-      : users
+      ? filteredUsers.filter(u => selectedKeys.includes(u.dn))
+      : filteredUsers
     if (rows.length === 0) {
       message.warning('没有可导出的数据')
       return
@@ -322,6 +333,19 @@ const UserSearch: React.FC = () => {
   const disabledCount = users.filter(u => u.status === 'disabled').length
   const lockedCount = users.filter(u => u.status === 'locked').length
 
+  // 手动分页切片：当前页超出范围时收敛到最后一页
+  const filteredUsers = statusFilter ? users.filter(u => u.status === statusFilter) : users
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSize))
+  const safePage = Math.min(page, totalPages)
+  const rangeStart = filteredUsers.length === 0 ? 0 : (safePage - 1) * pageSize + 1
+  const rangeEnd = Math.min(safePage * pageSize, filteredUsers.length)
+  const pagedUsers = filteredUsers.slice((safePage - 1) * pageSize, safePage * pageSize)
+
+  const toggleStatusFilter = (s: ADUser['status']) => {
+    setStatusFilter(prev => (prev === s ? null : s))
+    setPage(1)
+  }
+
   return (
   <>
     <TopBar
@@ -355,10 +379,10 @@ const UserSearch: React.FC = () => {
       </div>
       <div className="user-center-main">
       <StatsRow items={[
-        { label: '搜索结果', value: users.length },
-        { label: '活跃', value: activeCount },
-        { label: '已禁用', value: disabledCount },
-        { label: '已锁定', value: lockedCount },
+        { label: '搜索结果', value: users.length, onClick: () => { setStatusFilter(null); setPage(1) } },
+        { label: '活跃', value: activeCount, onClick: () => toggleStatusFilter('active'), active: statusFilter === 'active' },
+        { label: '已禁用', value: disabledCount, onClick: () => toggleStatusFilter('disabled'), active: statusFilter === 'disabled' },
+        { label: '已锁定', value: lockedCount, onClick: () => toggleStatusFilter('locked'), active: statusFilter === 'locked' },
       ]} />
       <Table
         className="nowrap-table"
@@ -371,7 +395,7 @@ const UserSearch: React.FC = () => {
             </Popconfirm>
           ),
         }]}
-        dataSource={users}
+        dataSource={pagedUsers}
         loading={loading}
         size="small"
         rowSelection={{
@@ -387,17 +411,30 @@ const UserSearch: React.FC = () => {
           },
         })}
         locale={{ emptyText: loading ? '加载中...' : '暂无用户，可输入关键词搜索' }}
-        scroll={{ x: 'max-content' }}
-        pagination={users.length > 0 ? {
-          defaultPageSize: 10,
-          showSizeChanger: true,
-          pageSizeOptions: [10, 20, 50, 100],
-          showTotal: (total, range) => `显示 ${range[0]}-${range[1]} / 共 ${total} 条`,
-          size: 'small',
-        } : false}
+        scroll={{ x: 'max-content', y: '100%' }}
+        pagination={false}
         style={{ fontSize: 12 }}
       />
       </div>
+    </div>
+    {/* 内容区整条底部栏：与侧边栏 SSL 状态栏同高对齐，横跨 OU 树 + 表格全宽。
+        底栏常驻（无数据时也保留），避免切换 OU / 拉取过程中底栏闪现导致布局跳动；
+        分页控件仅在有数据时渲染 */}
+    <div className="content-footer-bar">
+      <span className="footer-total">
+        {filteredUsers.length === 0 ? '共 0 条' : `显示 ${rangeStart}-${rangeEnd} / 共 ${filteredUsers.length} 条`}
+      </span>
+      {filteredUsers.length > 0 && (
+        <Pagination
+          current={safePage}
+          pageSize={pageSize}
+          total={filteredUsers.length}
+          size="small"
+          showSizeChanger
+          pageSizeOptions={[10, 20, 50, 100]}
+          onChange={(p, ps) => { setPage(p); setPageSize(ps) }}
+        />
+      )}
     </div>
     {passwordModal.user && (
       <ChangePasswordModal
